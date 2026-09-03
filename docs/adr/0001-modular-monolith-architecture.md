@@ -21,7 +21,7 @@ Hemos decidido adoptar la **Opción 2: Monolito Modular con FastAPI, Frontend SP
 1. **Backend**: Aplicación única FastAPI en Python 3.12 con gestión de dependencias `uv`, `ruff` para linting y `pytest`. Los submódulos (`core`, `finanzas`, `inventario`) se estructuran con su propio `models.py`, `schemas.py`, `service.py` y `router.py`.
 2. **Frontend**: Single Page Application (SPA) unificada con React + Vite + TailwindCSS, soporte PWA para móviles y diseño híbrido (acciones rápidas en móvil, analítica densa en escritorio).
 3. **Persistencia**: Base de datos PostgreSQL única con schemas lógicos (`core`, `finanzas`, `inventario`) y migraciones Alembic.
-4. **Dominio Core / Identidad**: Multi-usuario con concepto de `Household` (Hogar compartido). Soporte de login JWT con PIN de 4 dígitos para cambio ágil de perfiles (Pablo <-> Pareja) en dispositivos compartidos.
+4. **Dominio Core / Identidad**: Multi-usuario con concepto de `Household` (Hogar compartido). Soporte de login JWT con PIN de 4 dígitos para cambio ágil de perfiles (Pablo <-> Martu) en dispositivos compartidos.
 5. **Comunicación entre módulos**: Servicios directos en código (capa de servicios Python) con Foreign Keys hacia `core` para integridad referencial.
 6. **Despliegue**: `docker-compose.yml` unificado con imágenes multi-stage ligeras (Alpine/Slim).
 

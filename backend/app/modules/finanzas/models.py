@@ -126,10 +126,10 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    account_id: Mapped[uuid.UUID] = mapped_column(
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("finanzas.accounts.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("finanzas.accounts.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -163,7 +163,7 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
 
-    account: Mapped["Account"] = relationship("Account", lazy="selectin")
+    account: Mapped["Account | None"] = relationship("Account", lazy="selectin")
     category: Mapped["Category | None"] = relationship("Category", lazy="selectin")
 
 
@@ -315,3 +315,25 @@ class BrokerTransaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     fecha: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
+
+
+class CategoryMapping(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "category_mappings"
+    __table_args__ = {"schema": "finanzas"}
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    patron: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finanzas.categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    category: Mapped["Category"] = relationship("Category", lazy="selectin")
+

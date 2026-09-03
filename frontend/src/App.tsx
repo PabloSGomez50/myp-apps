@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { Layout } from '@/components/layout/Layout';
 import { LoginPage } from '@/modules/core/pages/LoginPage';
@@ -7,6 +8,16 @@ import { FinanzasDashboard } from '@/modules/finanzas/pages/FinanzasDashboard';
 import { ShoppingListPage } from '@/modules/finanzas/pages/ShoppingListPage';
 import { InventarioPage } from '@/modules/inventario/pages/InventarioPage';
 import { HogarPage } from '@/modules/core/pages/HogarPage';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -25,28 +36,31 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 export function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/finanzas" replace />} />
-            <Route path="finanzas" element={<FinanzasDashboard />} />
-            <Route path="finanzas/shopping" element={<ShoppingListPage />} />
-            <Route path="inventario" element={<InventarioPage />} />
-            <Route path="hogar" element={<HogarPage />} />
-          </Route>
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/finanzas" replace />} />
+              <Route path="finanzas" element={<FinanzasDashboard />} />
+              <Route path="finanzas/shopping" element={<ShoppingListPage />} />
+              <Route path="inventario" element={<InventarioPage />} />
+              <Route path="hogar" element={<HogarPage />} />
+            </Route>
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 
 export default App;
+

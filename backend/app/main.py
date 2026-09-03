@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import async_engine, init_db_schemas
 from app.modules.core.router import auth_router, core_router
 from app.modules.finanzas.router import finanzas_router
+from app.modules.inventario.router import inventario_router
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(core_router)
 app.include_router(finanzas_router)
+app.include_router(inventario_router)
 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["Health"])

@@ -1,5 +1,7 @@
+import csv
+import io
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -14,6 +16,7 @@ from app.modules.finanzas.models import (
     BrokerTransaction,
     Budget,
     Category,
+    CategoryMapping,
     ExpenseTypeEnum,
     GoalContribution,
     SavingsGoal,
@@ -29,10 +32,15 @@ from app.modules.finanzas.schemas import (
     BrokerTxCreate,
     BudgetCreate,
     BudgetOut,
+    BulkImportRequest,
     CategoryCreate,
+    CategoryMappingCreate,
+    CategoryMappingOut,
     CategoryOut,
     CategoryUpdate,
     CoupleBalanceOut,
+    CsvParseResponse,
+    CsvPreviewRow,
     EmergencyFundCalculationOut,
     GoalContributionCreate,
     SavingsGoalCreate,
@@ -219,18 +227,27 @@ class FinanzasService:
     async def create_transaction(
         db: AsyncSession, user_id: uuid.UUID, household_id: uuid.UUID, data: TransactionCreate
     ) -> Transaction:
-        # Verify account
-        acc_result = await db.execute(select(Account).where(Account.id == data.account_id))
-        account = acc_result.scalar_one_or_none()
-        if not account:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta no encontrada."
-            )
+        payer_user_id = data.user_id if data.user_id else user_id
+
+        # Verify account if provided
+        if data.account_id:
+            acc_result = await db.execute(select(Account).where(Account.id == data.account_id))
+            account = acc_result.scalar_one_or_none()
+            if not account:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta no encontrada."
+                )
+
+            # Update account balance atomically
+            if data.tipo == TransactionTypeEnum.EXPENSE:
+                account.saldo_actual -= data.monto
+            elif data.tipo == TransactionTypeEnum.INCOME:
+                account.saldo_actual += data.monto
 
         transaction = Transaction(
             household_id=household_id,
             account_id=data.account_id,
-            user_id=user_id,
+            user_id=payer_user_id,
             category_id=data.category_id,
             tipo=data.tipo,
             monto=data.monto,
@@ -242,13 +259,6 @@ class FinanzasService:
             fecha=data.fecha,
         )
         db.add(transaction)
-
-        # Update account balance atomically
-        if data.tipo == TransactionTypeEnum.EXPENSE:
-            account.saldo_actual -= data.monto
-        elif data.tipo == TransactionTypeEnum.INCOME:
-            account.saldo_actual += data.monto
-
         await db.commit()
         await db.refresh(transaction)
         return transaction
@@ -257,8 +267,10 @@ class FinanzasService:
     async def create_split_transaction(
         db: AsyncSession, user_id: uuid.UUID, household_id: uuid.UUID, data: TransactionSplitCreate
     ) -> Transaction:
+        payer_user_id = data.user_id if data.user_id else user_id
         create_data = TransactionCreate(
             account_id=data.account_id,
+            user_id=payer_user_id,
             category_id=data.category_id,
             tipo=TransactionTypeEnum.EXPENSE,
             monto=data.monto,
@@ -268,7 +280,7 @@ class FinanzasService:
             descripcion=data.descripcion,
             fecha=data.fecha,
         )
-        return await FinanzasService.create_transaction(db, user_id, household_id, create_data)
+        return await FinanzasService.create_transaction(db, payer_user_id, household_id, create_data)
 
     @staticmethod
     async def create_settlement(
@@ -327,7 +339,7 @@ class FinanzasService:
 
         active_user_name = active_user_member.user.nombre if active_user_member else "Usuario"
         partner_id = partner_member.user_id if partner_member else None
-        partner_name = partner_member.user.nombre if partner_member else "Pareja"
+        partner_name = partner_member.user.nombre if partner_member else "Martu"
 
         if not partner_id:
             return CoupleBalanceOut(
@@ -735,3 +747,261 @@ class FinanzasService:
         await db.commit()
         await db.refresh(tx)
         return tx
+
+    # ==========================================================================
+    # Category Mappings & CSV Import
+    # ==========================================================================
+    @staticmethod
+    async def get_category_mappings(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> list[CategoryMappingOut]:
+        result = await db.execute(
+            select(CategoryMapping)
+            .options(selectinload(CategoryMapping.category))
+            .where(CategoryMapping.household_id == household_id)
+            .order_by(CategoryMapping.patron.asc())
+        )
+        mappings = list(result.scalars().all())
+        return [CategoryMappingOut.model_validate(m) for m in mappings]
+
+    @staticmethod
+    async def create_category_mapping(
+        db: AsyncSession, household_id: uuid.UUID, data: CategoryMappingCreate
+    ) -> CategoryMappingOut:
+        patron_clean = data.patron.strip().lower()
+        result = await db.execute(
+            select(CategoryMapping).where(
+                CategoryMapping.household_id == household_id,
+                func.lower(CategoryMapping.patron) == patron_clean,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.category_id = data.category_id
+            await db.commit()
+            await db.refresh(existing)
+            mapping = existing
+        else:
+            mapping = CategoryMapping(
+                household_id=household_id,
+                patron=patron_clean,
+                category_id=data.category_id,
+            )
+            db.add(mapping)
+            await db.commit()
+            await db.refresh(mapping)
+
+        mapping_reloaded = await db.execute(
+            select(CategoryMapping)
+            .options(selectinload(CategoryMapping.category))
+            .where(CategoryMapping.id == mapping.id)
+        )
+        return CategoryMappingOut.model_validate(mapping_reloaded.scalar_one())
+
+    @staticmethod
+    async def parse_csv_content(
+        db: AsyncSession, household_id: uuid.UUID, content: str
+    ) -> CsvParseResponse:
+        # 1. Fetch Household Members
+        members_res = await db.execute(
+            select(HouseholdMember)
+            .options(selectinload(HouseholdMember.user))
+            .where(HouseholdMember.household_id == household_id)
+        )
+        members = list(members_res.scalars().all())
+
+        # Build map of user names
+        users_map: dict[str, tuple[uuid.UUID, str]] = {}
+        for m in members:
+            if m.user:
+                users_map[m.user.nombre.strip().lower()] = (m.user.id, m.user.nombre)
+
+        # 2. Fetch Category Mappings & Categories
+        mappings_res = await db.execute(
+            select(CategoryMapping).where(CategoryMapping.household_id == household_id)
+        )
+        mappings = list(mappings_res.scalars().all())
+
+        categories_res = await db.execute(
+            select(Category).where(
+                Category.household_id == household_id, Category.is_active.is_(True)
+            )
+        )
+        categories = list(categories_res.scalars().all())
+        categories_by_type = {c.tipo_gasto: c for c in categories}
+        categories_by_name = {c.nombre.strip().lower(): c for c in categories}
+
+        # Keyword rules for fallback category matching
+        keyword_type_map = {
+            "coto": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "diarco": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "carrefour": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "carefour": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "dia": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "res": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "verduleria": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "supermercado": ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+            "rapanui": ExpenseTypeEnum.LEISURE_COUPLE,
+            "sushi": ExpenseTypeEnum.LEISURE_COUPLE,
+            "mostaza": ExpenseTypeEnum.LEISURE_COUPLE,
+            "luccianos": ExpenseTypeEnum.LEISURE_COUPLE,
+            "cinepolis": ExpenseTypeEnum.LEISURE_COUPLE,
+            "pizza": ExpenseTypeEnum.LEISURE_COUPLE,
+            "metrogas": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+            "aysa": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+            "edesur": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+            "expensas": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+            "wifi": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+            "personal": ExpenseTypeEnum.FIXED_HOUSEHOLD,
+        }
+
+        reader = csv.reader(io.StringIO(content))
+        header = next(reader, None)
+
+        rows: list[CsvPreviewRow] = []
+        unmatched_users_count = 0
+        unmatched_categories_count = 0
+
+        for idx, row in enumerate(reader, start=1):
+            if not row or len(row) < 3:
+                continue
+
+            fecha_str = row[0].strip()
+            concepto_str = row[1].strip()
+            monto_str = row[2].strip()
+            quien_pago_raw = row[3].strip() if len(row) > 3 else ""
+
+            # Parse amount (handling Argentine comma decimals "151312,32")
+            monto_clean = monto_str.replace('"', "").replace(" ", "").replace(".", "").replace(",", ".")
+            try:
+                monto_val = float(monto_clean)
+            except ValueError:
+                # Try simple replace of comma if previous cleaning failed
+                try:
+                    monto_val = float(monto_str.replace('"', "").replace(",", "."))
+                except ValueError:
+                    monto_val = 0.0
+
+            # Match User
+            matched_user_id = None
+            matched_user_name = None
+            user_matched = False
+            raw_user_lower = quien_pago_raw.lower()
+
+            for name_key, (uid, uname) in users_map.items():
+                if name_key in raw_user_lower or raw_user_lower in name_key:
+                    matched_user_id = uid
+                    matched_user_name = uname
+                    user_matched = True
+                    break
+
+            if not user_matched:
+                unmatched_users_count += 1
+
+            # Match Category
+            matched_cat_id = None
+            matched_cat_name = None
+            cat_matched = False
+            concepto_lower = concepto_str.lower()
+
+            # First, check database category_mappings
+            for m in mappings:
+                if m.patron.lower() in concepto_lower:
+                    matched_cat_id = m.category_id
+                    # find cat name
+                    cat_obj = next((c for c in categories if c.id == m.category_id), None)
+                    matched_cat_name = cat_obj.nombre if cat_obj else None
+                    cat_matched = True
+                    break
+
+            # Second, fallback keyword rules
+            if not cat_matched:
+                for kw, exp_type in keyword_type_map.items():
+                    if kw in concepto_lower:
+                        cat_obj = categories_by_type.get(exp_type)
+                        if cat_obj:
+                            matched_cat_id = cat_obj.id
+                            matched_cat_name = cat_obj.nombre
+                            cat_matched = True
+                            break
+
+            if not cat_matched:
+                unmatched_categories_count += 1
+
+            # Date formatting (D/M/YYYY to YYYY-MM-DD)
+            formatted_date = fecha_str
+            try:
+                parts = fecha_str.split("/")
+                if len(parts) == 3:
+                    day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+                    formatted_date = f"{year:04d}-{month:02d}-{day:02d}"
+            except Exception:
+                pass
+
+            rows.append(
+                CsvPreviewRow(
+                    row_index=idx,
+                    fecha=formatted_date,
+                    concepto=concepto_str,
+                    monto=monto_val,
+                    quien_pago_raw=quien_pago_raw,
+                    user_id=matched_user_id,
+                    user_name=matched_user_name,
+                    user_matched=user_matched,
+                    category_id=matched_cat_id,
+                    category_name=matched_cat_name,
+                    category_matched=cat_matched,
+                )
+            )
+
+        return CsvParseResponse(
+            rows=rows,
+            total_rows=len(rows),
+            unmatched_users=unmatched_users_count,
+            unmatched_categories=unmatched_categories_count,
+        )
+
+    @staticmethod
+    async def bulk_import_transactions(
+        db: AsyncSession, household_id: uuid.UUID, data: BulkImportRequest
+    ) -> int:
+        # Save new category mappings
+        for m in data.new_mappings:
+            patron_clean = m.patron.strip().lower()
+            res = await db.execute(
+                select(CategoryMapping).where(
+                    CategoryMapping.household_id == household_id,
+                    func.lower(CategoryMapping.patron) == patron_clean,
+                )
+            )
+            existing = res.scalar_one_or_none()
+            if not existing:
+                new_m = CategoryMapping(
+                    household_id=household_id,
+                    patron=patron_clean,
+                    category_id=m.category_id,
+                )
+                db.add(new_m)
+
+        count = 0
+        for r in data.rows:
+            tx = Transaction(
+                household_id=household_id,
+                account_id=None,
+                user_id=r.user_id,
+                category_id=r.category_id,
+                tipo=TransactionTypeEnum.EXPENSE,
+                monto=r.monto,
+                moneda="ARS",
+                es_compartido=r.es_compartido,
+                split_ratio=Decimal("0.50"),
+                tipo_cambio=Decimal("1.0000"),
+                descripcion=r.concepto,
+                fecha=r.fecha,
+            )
+            db.add(tx)
+            count += 1
+
+        await db.commit()
+        return count
+

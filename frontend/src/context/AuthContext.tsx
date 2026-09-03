@@ -1,8 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthState, User, Household } from '@/types';
+import { authApi, coreApi } from '@/services/api';
+import { useQueryClient } from '@tanstack/react-query';
+
+interface RegisterData {
+  email: string;
+  password: string;
+  nombre: string;
+  pin?: string;
+  household_name?: string;
+}
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   switchProfileWithPin: (userId: string, pin: string) => Promise<boolean>;
   activeUser: User | null;
@@ -16,41 +27,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [householdMembers, setHouseholdMembers] = useState<User[]>([]);
   const [token, setToken] = useState<string | null>(localStorage.getItem('myp_token'));
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const initAuth = async () => {
       const savedToken = localStorage.getItem('myp_token');
       if (savedToken) {
         try {
-          const mockUser: User = {
-            id: '11111111-1111-1111-1111-111111111111',
-            email: 'pablo@myp.local',
-            nombre: 'Pablo',
-            color_avatar: '#16a34a',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          };
-          const mockPartner: User = {
-            id: '22222222-2222-2222-2222-222222222222',
-            email: 'pareja@myp.local',
-            nombre: 'Pareja',
-            color_avatar: '#ec4899',
-            is_active: true,
-            created_at: new Date().toISOString(),
-          };
-          const mockHousehold: Household = {
-            id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            nombre: 'Casa Pablo & Pareja',
-            moneda_principal: 'ARS',
-            created_at: new Date().toISOString(),
-          };
+          const userData = await authApi.getMe();
+          setUser(userData);
 
-          setUser(mockUser);
-          setHousehold(mockHousehold);
-          setHouseholdMembers([mockUser, mockPartner]);
+          try {
+            const householdData = await coreApi.getHousehold();
+            setHousehold(householdData);
+          } catch {
+            setHousehold(null);
+          }
         } catch {
           logout();
         }
+      } else {
+        setUser(null);
+        setHousehold(null);
+        setHouseholdMembers([]);
       }
       setIsLoading(false);
     };
@@ -58,39 +57,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, _password: string) => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      const mockToken = 'mock_jwt_token';
-      localStorage.setItem('myp_token', mockToken);
-      setToken(mockToken);
-      
-      const mockUser: User = {
-        id: '11111111-1111-1111-1111-111111111111',
-        email: email,
-        nombre: email.toLowerCase().includes('pareja') ? 'Pareja' : 'Pablo',
-        color_avatar: '#16a34a',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      const mockPartner: User = {
-        id: '22222222-2222-2222-2222-222222222222',
-        email: 'pareja@myp.local',
-        nombre: 'Pareja',
-        color_avatar: '#ec4899',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      const mockHousehold: Household = {
-        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-        nombre: 'Casa Pablo & Pareja',
-        moneda_principal: 'ARS',
-        created_at: new Date().toISOString(),
-      };
+      const res = await authApi.login(email, password);
+      localStorage.setItem('myp_token', res.access_token);
+      if (res.household_id) {
+        localStorage.setItem('myp_household_id', res.household_id);
+      }
+      setToken(res.access_token);
+      setUser(res.user);
 
-      setUser(mockUser);
-      setHousehold(mockHousehold);
-      setHouseholdMembers([mockUser, mockPartner]);
+      try {
+        const householdData = await coreApi.getHousehold();
+        setHousehold(householdData);
+      } catch {
+        setHousehold(null);
+      }
+
+      queryClient.invalidateQueries();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (registerData: RegisterData) => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.register(registerData);
+      localStorage.setItem('myp_token', res.access_token);
+      if (res.household_id) {
+        localStorage.setItem('myp_household_id', res.household_id);
+      }
+      setToken(res.access_token);
+      setUser(res.user);
+
+      try {
+        const householdData = await coreApi.getHousehold();
+        setHousehold(householdData);
+      } catch {
+        setHousehold(null);
+      }
+
+      queryClient.invalidateQueries();
     } finally {
       setIsLoading(false);
     }
@@ -103,17 +112,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setHousehold(null);
     setHouseholdMembers([]);
+    queryClient.clear();
   };
 
   const switchProfileWithPin = async (userId: string, pin: string): Promise<boolean> => {
-    if (pin.length === 4) {
-      const targetUser = householdMembers.find((m) => m.id === userId);
-      if (targetUser) {
-        setUser(targetUser);
-        return true;
-      }
+    if (pin.length !== 4) return false;
+    try {
+      const res = await authApi.switchPin(userId, pin);
+      localStorage.setItem('myp_token', res.access_token);
+      setToken(res.access_token);
+      setUser(res.user);
+      queryClient.invalidateQueries();
+      return true;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   return (
@@ -127,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         login,
+        register,
         logout,
         switchProfileWithPin,
       }}

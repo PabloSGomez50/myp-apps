@@ -103,7 +103,7 @@ myp-apps/
 
 1. **`core`**:
    - `users`: Identidad, email único, `hashed_password`, `pin_hash` (para switch ágil de perfil en dispositivos compartidos), nombre, color avatar, estado activo.
-   - `households`: Espacio compartido del hogar ("Casa Pablo & Pareja"), moneda principal (`ARS`/`USD`).
+   - `households`: Espacio compartido del hogar ("Casa Pablo & Martu"), moneda principal (`ARS`/`USD`).
    - `household_members`: Asociación de usuarios a hogares con roles `ADMIN` y `MEMBER`.
 
 2. **`finanzas`**:

@@ -6,7 +6,10 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import get_db
-from app.main import app
+from app.main import app as fastapi_app
+import app.modules.core.models  # noqa: F401
+import app.modules.finanzas.models  # noqa: F401
+import app.modules.inventario.models  # noqa: F401
 from app.shared.base_model import Base
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -58,7 +61,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     async def override_get_db():
         yield db_session
 
-    app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    fastapi_app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()
+    fastapi_app.dependency_overrides.clear()

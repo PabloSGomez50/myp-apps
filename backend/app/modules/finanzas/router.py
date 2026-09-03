@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -15,10 +15,14 @@ from app.modules.finanzas.schemas import (
     BrokerTxCreate,
     BudgetCreate,
     BudgetOut,
+    BulkImportRequest,
     CategoryCreate,
+    CategoryMappingCreate,
+    CategoryMappingOut,
     CategoryOut,
     CategoryUpdate,
     CoupleBalanceOut,
+    CsvParseResponse,
     EmergencyFundCalculationOut,
     GoalContributionCreate,
     SavingsGoalCreate,
@@ -331,4 +335,58 @@ async def record_broker_transaction(
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
     db: AsyncSession = Depends(get_db),
 ):
+    user, _ = current_auth
     return await FinanzasService.record_broker_transaction(db, id, data)
+
+
+# ==============================================================================
+# Category Mappings & CSV Bulk Import
+# ==============================================================================
+@finanzas_router.get(
+    "/category-mappings", response_model=list[CategoryMappingOut], status_code=status.HTTP_200_OK
+)
+async def get_category_mappings(
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.get_category_mappings(db, household_id)
+
+
+@finanzas_router.post(
+    "/category-mappings", response_model=CategoryMappingOut, status_code=status.HTTP_201_CREATED
+)
+async def create_category_mapping(
+    data: CategoryMappingCreate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.create_category_mapping(db, household_id, data)
+
+
+@finanzas_router.post(
+    "/transactions/parse-csv", response_model=CsvParseResponse, status_code=status.HTTP_200_OK
+)
+async def parse_csv(
+    file: UploadFile = File(...),
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    content = await file.read()
+    text = content.decode("utf-8-sig", errors="replace")
+    return await FinanzasService.parse_csv_content(db, household_id, text)
+
+
+@finanzas_router.post(
+    "/transactions/bulk-import", status_code=status.HTTP_201_CREATED
+)
+async def bulk_import(
+    data: BulkImportRequest,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    count = await FinanzasService.bulk_import_transactions(db, household_id, data)
+    return {"imported_count": count, "status": "success"}

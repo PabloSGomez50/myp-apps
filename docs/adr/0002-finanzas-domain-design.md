@@ -6,7 +6,7 @@
 
 ## Contexto y Declaración del Problema
 
-Se requiere modelar y especificar el dominio financiero para una pareja en convivencia reciente (Pablo y pareja). La solución debe permitir trackear ingresos, gastos personales y compartidos, listas de compras con descuentos de supermercado, balances de deudas estilo Splitwise (50/50), metas de ahorro con fondo de emergencia, flujo de caja mensual y un MVP de inversiones en brokers.
+Se requiere modelar y especificar el dominio financiero para una pareja en convivencia reciente (Pablo y Martu). La solución debe permitir trackear ingresos, gastos personales y compartidos, listas de compras con descuentos de supermercado, balances de deudas estilo Splitwise (50/50), metas de ahorro con fondo de emergencia, flujo de caja mensual y un MVP de inversiones en brokers.
 
 ## Decisiones Principales
 

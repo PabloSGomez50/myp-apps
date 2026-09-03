@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_and_household
 from app.modules.core.models import User
 from app.modules.core.schemas import (
+    AddMemberRequest,
     HouseholdOut,
     PinSwitchRequest,
     TokenResponse,
@@ -60,3 +61,18 @@ async def get_household(
             detail="No hay un hogar activo vinculado.",
         )
     return await CoreService.get_household_details(db, household_id)
+
+
+@core_router.post("/household/members", response_model=HouseholdOut, status_code=status.HTTP_201_CREATED)
+async def add_household_member(
+    data: AddMemberRequest,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    if not household_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay un hogar activo vinculado.",
+        )
+    return await CoreService.add_household_member(db, household_id, data.email, data.nombre)

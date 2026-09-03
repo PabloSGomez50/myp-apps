@@ -26,22 +26,24 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 ---
 
-## 📌 Fase 3: Integración Frontend y Formularios Interactivos (PRÓXIMA SESIÓN)
-- [ ] Conectar React Query / Axios en el frontend con los endpoints reales del backend:
-  - [ ] Login y switch rápido por PIN interactivo conectado a `/api/v1/auth/*`.
-  - [ ] Dashboard de finanzas con datos en tiempo real de `/api/v1/finanzas/balance/couple-net`.
-  - [ ] Modal de registro de nuevo movimiento (Gasto individual vs Gasto 50/50).
-  - [ ] Modal de liquidación de saldo (`SETTLEMENT`) con selector de cuenta origen y destino.
-  - [ ] Lista de compras interactiva conectada a `/api/v1/finanzas/shopping/*` con checkout en vivo.
-  - [ ] Panel de presupuestos mensuales con creación y barras de progreso activas.
-  - [ ] Panel de metas de ahorro y calculadora de fondo de emergencia.
+## ✅ Fase 3: Integración Frontend y Formularios Interactivos (COMPLETADO)
+- [x] Configuración de `@tanstack/react-query` v5 para gestión de estado de servidor y caché en la SPA React.
+- [x] Cliente HTTP Axios fuertemente tipado en `src/services/api.ts` para `/api/v1/auth/*` y `/api/v1/finanzas/*`.
+- [x] Autenticación y cambio rápido de perfil por PIN de 4 dígitos integrado en `AuthContext.tsx`.
+- [x] Dashboard de finanzas con visualización en tiempo real del balance continuo de pareja (`CoupleNetBalance`).
+- [x] Modal interactivo `NewTransactionModal` para registrar gastos individuales y compartidos 50/50.
+- [x] Modal interactivo `SettlementModal` para transferencia de liquidaciones de deuda.
+- [x] Lista de compras interactiva en `ShoppingListPage.tsx` con descuentos jerárquicos, modales de ítems, sugerencia por stock bajo y checkout hacia transacción 50/50.
 
 ---
 
-## 📦 Fase 4: Módulo de Inventario (`inventario`)
-- [ ] Modelado de esquema PostgreSQL `inventario` (`items`, `categories`, `stock`, `locations`, `expiration_dates`).
-- [ ] Endpoints RESTful para control de stock de despensa, limpieza y compras recurrentes.
-- [ ] Vinculación con lista de compras (agregar automáticamente a la lista productos cuando el stock esté bajo).
+## ✅ Fase 4: Módulo de Inventario (`inventario`) (COMPLETADO)
+- [x] Modelado del esquema PostgreSQL `inventario` (`locations`, `categories`, `items`, `stock_logs`).
+- [x] Migración de Alembic `0002_inventario_schema.py` para la estructura de tablas del módulo.
+- [x] Endpoints RESTful para control de stock, ubicaciones físicas y filtro de stock bajo (`/api/v1/inventario/*`).
+- [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtro por ubicación, insignias de estado y botones rápidos de ajuste `[+]` y `[-]`.
+- [x] Vinculación interactiva con la lista de compras: botón *"Sugerir por Stock Bajo"* en `ShoppingListPage.tsx` importando productos desde la BD en tiempo real.
+- [x] Suite de pruebas automatizadas con Pytest (`tests/test_inventario.py`) pasando al 100%.
 
 ---
 

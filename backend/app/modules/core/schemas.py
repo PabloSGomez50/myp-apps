@@ -42,8 +42,9 @@ class HouseholdBase(BaseModel):
     moneda_principal: CurrencyEnum = CurrencyEnum.ARS
 
 
-class HouseholdCreate(HouseholdBase):
-    pass
+class AddMemberRequest(BaseModel):
+    email: EmailStr
+    nombre: str = Field(..., min_length=2, max_length=100)
 
 
 class HouseholdMemberOut(BaseModel):

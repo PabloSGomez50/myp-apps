@@ -14,7 +14,7 @@ async def test_accounts_and_splitwise_flow(client: AsyncClient):
             "password": "password123",
             "pin": "1234",
             "nombre": "Pablo",
-            "household_name": "Casa Pablo & Pareja",
+            "household_name": "Casa Pablo & Martu",
         },
     )
     assert res_pablo.status_code == 201, res_pablo.text
@@ -23,14 +23,14 @@ async def test_accounts_and_splitwise_flow(client: AsyncClient):
     household_id = pablo_data["household_id"]
     headers_pablo = {"Authorization": f"Bearer {token_pablo}"}
 
-    # 2. Register Partner (joins Pablo's Household)
+    # 2. Register Partner Martu (joins Pablo's Household)
     res_partner = await client.post(
         "/api/v1/auth/register",
         json={
             "email": "partner_fin@mypapps.com",
             "password": "password123",
             "pin": "5678",
-            "nombre": "Pareja",
+            "nombre": "Martu",
             "household_id": household_id,
         },
     )
@@ -56,7 +56,7 @@ async def test_accounts_and_splitwise_flow(client: AsyncClient):
         "/api/v1/finanzas/accounts",
         headers=headers_partner,
         json={
-            "nombre": "Uala Pareja",
+            "nombre": "Uala Martu",
             "tipo": "FINTECH",
             "moneda": "ARS",
             "saldo_actual": "200000.00",

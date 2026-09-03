@@ -6,7 +6,7 @@ Este glosario establece las definiciones formales del vocabulario utilizado en e
 
 ### 🏠 Núcleo y Convivencia (`core`)
 
-- **Hogar (`Household`)**: Espacio o entidad compartida que agrupa a los convivientes (Pablo y su Pareja). Define la moneda principal base (ej. `ARS`, `USD`) y la configuración general.
+- **Hogar (`Household`)**: Espacio o entidad compartida que agrupa a los convivientes (Pablo y Martu). Define la moneda principal base (ej. `ARS`, `USD`) y la configuración general.
 - **Miembro (`HouseholdMember`)**: Vínculo entre un usuario y un hogar, con un rol asignado (`ADMIN` o `MEMBER`).
 - **Conmutación por PIN (`PIN Profile Switch`)**: Mecanismo ágil de autenticación que permite cambiar el perfil activo en un dispositivo compartido (móvil en el súper, tablet en la cocina) validando un PIN de 4 dígitos sin requerir reingresar credenciales completas.
 

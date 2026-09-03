@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: myp_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myp_password}
+      POSTGRES_DB: ${POSTGRES_DB:-myp_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myp_user} -d ${POSTGRES_DB:-myp_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - myp_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: myp_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - myp_network
+
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: myp_backend
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - POSTGRES_HOST=postgres
+  #     - REDIS_HOST=redis
+  #     - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-myp_user}:${POSTGRES_PASSWORD:-myp_password}@postgres:5432/${POSTGRES_DB:-myp_db}
+  #     - DATABASE_SYNC_URL=postgresql://${POSTGRES_USER:-myp_user}:${POSTGRES_PASSWORD:-myp_password}@postgres:5432/${POSTGRES_DB:-myp_db}
+  #     - REDIS_URL=redis://redis:6379/0
+  #   ports:
+  #     - "${BACKEND_PORT:-8000}:8000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - myp_network
+
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: myp_frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${FRONTEND_PORT:-3002}:80"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - myp_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  myp_network:
+    driver: bridge

@@ -103,7 +103,8 @@ class BudgetOut(BudgetBase):
 # Transactions & Splitwise
 # ==============================================================================
 class TransactionBase(BaseModel):
-    account_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     tipo: TransactionTypeEnum = TransactionTypeEnum.EXPENSE
     monto: Decimal = Field(..., gt=0)
@@ -120,7 +121,8 @@ class TransactionCreate(TransactionBase):
 
 
 class TransactionSplitCreate(BaseModel):
-    account_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
     category_id: uuid.UUID
     monto: Decimal = Field(..., gt=0)
     moneda: str = Field(default="ARS", max_length=10)
@@ -143,6 +145,7 @@ class TransactionOut(TransactionBase):
     household_id: uuid.UUID
     user_id: uuid.UUID
     created_at: datetime
+    account: AccountOut | None = None
     category: CategoryOut | None = None
 
 
@@ -295,3 +298,58 @@ class CashflowOut(BaseModel):
     presupuestos_variables: Decimal
     compromisos_ahorro: Decimal
     dinero_libre_disponible: Decimal
+
+
+# ==============================================================================
+# Category Mappings & CSV Import
+# ==============================================================================
+class CategoryMappingCreate(BaseModel):
+    patron: str = Field(..., min_length=2, max_length=100)
+    category_id: uuid.UUID
+
+
+class CategoryMappingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    patron: str
+    category_id: uuid.UUID
+    category: CategoryOut | None = None
+    created_at: datetime
+
+
+class CsvPreviewRow(BaseModel):
+    row_index: int
+    fecha: str
+    concepto: str
+    monto: float
+    quien_pago_raw: str
+    user_id: uuid.UUID | None = None
+    user_name: str | None = None
+    user_matched: bool = False
+    category_id: uuid.UUID | None = None
+    category_name: str | None = None
+    category_matched: bool = False
+
+
+class CsvParseResponse(BaseModel):
+    rows: list[CsvPreviewRow]
+    total_rows: int
+    unmatched_users: int
+    unmatched_categories: int
+
+
+class BulkImportRow(BaseModel):
+    fecha: datetime
+    concepto: str
+    monto: Decimal = Field(..., gt=0)
+    user_id: uuid.UUID
+    category_id: uuid.UUID | None = None
+    es_compartido: bool = True
+
+
+class BulkImportRequest(BaseModel):
+    rows: list[BulkImportRow]
+    new_mappings: list[CategoryMappingCreate] = Field(default_factory=list)
+

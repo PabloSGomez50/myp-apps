@@ -11,7 +11,7 @@ async def test_register_and_login(client: AsyncClient):
         "pin": "1234",
         "nombre": "Pablo",
         "color_avatar": "#16a34a",
-        "household_name": "Casa Pablo & Pareja",
+        "household_name": "Casa Pablo & Martu",
     }
     res = await client.post("/api/v1/auth/register", json=register_payload)
     assert res.status_code == 201, res.text
@@ -46,20 +46,20 @@ async def test_switch_profile_with_pin(client: AsyncClient):
     assert res_pablo.status_code == 201, res_pablo.text
     token_pablo = res_pablo.json()["access_token"]
 
-    # Register Partner
+    # Register Partner Martu
     res_partner = await client.post(
         "/api/v1/auth/register",
         json={
-            "email": "pareja_pin@mypapps.com",
+            "email": "martu_pin@mypapps.com",
             "password": "password123",
             "pin": "2222",
-            "nombre": "Pareja",
+            "nombre": "Martu",
         },
     )
     assert res_partner.status_code == 201, res_partner.text
     partner_id = res_partner.json()["user"]["id"]
 
-    # Switch from Pablo to Partner with PIN
+    # Switch from Pablo to Martu with PIN
     switch_res = await client.post(
         "/api/v1/auth/switch-profile",
         headers={"Authorization": f"Bearer {token_pablo}"},
@@ -67,7 +67,7 @@ async def test_switch_profile_with_pin(client: AsyncClient):
     )
     assert switch_res.status_code == 200, switch_res.text
     switch_data = switch_res.json()
-    assert switch_data["user"]["nombre"] == "Pareja"
+    assert switch_data["user"]["nombre"] == "Martu"
 
     # Switch with wrong PIN
     bad_pin_res = await client.post(
