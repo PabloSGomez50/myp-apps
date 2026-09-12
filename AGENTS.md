@@ -62,7 +62,12 @@ myp-apps/
 - **Docker Stack:** `docker compose up -d --build`
 - **Docker Logs:** `docker compose logs -f [servicio]`
 
-## 🎯 Current Objectives (Fase 3)
-- Conectar los endpoints de backend con la interfaz de React en `frontend/` mediante React Query / Axios.
-- Implementar los modales interactivos de nuevo movimiento (gasto individual vs 50/50), liquidación de saldo y checkout de compras.
-- Integrar la visualización en tiempo real del balance neto de pareja.
+## 🎯 Current Objectives & Achievements (Fase 3 & 4)
+- **Frontend SPA Integration:** Interfaz modular React 18 + Vite conectada 100% con FastAPI endpoints via React Query.
+- **Navegación & Layout:** Sidebar colapsable con persistencia en `localStorage` y posicionamiento `sticky top-16` para scroll fluido.
+- **Centro de Movimientos & CSV:** Tabla de movimientos con filtros por fecha/categoría/usuario, paginación, importador CSV y borrado masivo por filtros (`POST /transactions/bulk-delete`).
+- **Resumen & Balance Dashboard:**
+  - Desglose porcentual de gastos por categoría mediante `recharts` (Pie/Donut Chart con selector de período).
+  - Evolución histórica mensual apilada (Stacked Bar Chart con selector de 3, 6 o 12 meses).
+  - Modal `NewIncomeModal.tsx` para registrar sueldos/ingresos por integrante.
+  - Métricas dinámicas en tiempo real: *Flujo Libre del Mes* (`Total Ingresos - Total Gastos`) y *Gastos Compartidos*.

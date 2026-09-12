@@ -37,8 +37,18 @@ Clasificación de gastos estructurada en dos dimensiones (Ámbito x Naturaleza):
   $$\text{Precio Final Item} = \text{precio\_unitario} \times \text{cantidad} \times \left(1 - \frac{\text{Descuento Aplicado}}{100}\right)$$
 - **Checkout**: Al presionar *"Finalizar Compra"*, se genera automáticamente una transacción compartida 50/50 por el total neto pagado y se descuenta de la cuenta de pago elegida.
 
-### E. Calculadora de Fondo de Emergencia
-- Calcula el promedio mensual de gastos fijos del hogar (`FIXED_HOUSEHOLD` + `FIXED_PERSONAL`) y calcula la meta y porcentaje de cobertura para 3 o 6 meses de protección.
+### E. Ingresos del Hogar y Flujo Libre Mensual
+- **Registro de Sueldos e Ingresos**: Todo sueldo o ingreso percibido por un integrante del hogar se registra como una transacción con `tipo = INCOME`, asociada a su `user_id`, fecha y descripción.
+- **Fórmula de Flujo Libre del Mes**:
+  $$\text{Flujo Libre del Mes} = \sum \text{Ingresos del Mes} - \sum \text{Gastos del Mes (Personales + Compartidos)}$$
+- Proporciona una métrica en tiempo real del dinero neto excedente o déficit del hogar tras afrontar todos los compromisos del período.
+
+### F. Analítica Visual y Comparativa Histórica
+- **Desglose Porcentual por Categoría (Pie/Donut Chart)**: Gráfico interactivo que calcula el porcentaje y monto acumulado por categoría en el período (Mes Actual, Mes Anterior, Todo el Historial).
+- **Evolución Mensual Apilada (Stacked Bar Chart)**: Comparativa de barras apiladas de los gastos en ARS clasificados por categoría mes a mes (con rangos de 3, 6 y 12 meses).
+
+### G. Calculadora de Fondo de Emergencia
+- Calcula el promedio mensual de gastos fijos del hogar (`FIXED_HOUSEHOLD` + `FIXED_PERSONAL`) y calcula la meta y porcentaje de cobertura para 3 o 6 meses de protección. Plan de aportes dedicados desde la vista de ahorros.
 
 ---
 

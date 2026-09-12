@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { Layout } from '@/components/layout/Layout';
 import { LoginPage } from '@/modules/core/pages/LoginPage';
 import { FinanzasDashboard } from '@/modules/finanzas/pages/FinanzasDashboard';
+import { MovimientosPage } from '@/modules/finanzas/pages/MovimientosPage';
+import { InversionesPage } from '@/modules/finanzas/pages/InversionesPage';
 import { ShoppingListPage } from '@/modules/finanzas/pages/ShoppingListPage';
 import { InventarioPage } from '@/modules/inventario/pages/InventarioPage';
 import { HogarPage } from '@/modules/core/pages/HogarPage';
@@ -51,6 +53,8 @@ export function App() {
             >
               <Route index element={<Navigate to="/finanzas" replace />} />
               <Route path="finanzas" element={<FinanzasDashboard />} />
+              <Route path="finanzas/movimientos" element={<MovimientosPage />} />
+              <Route path="finanzas/inversiones" element={<InversionesPage />} />
               <Route path="finanzas/shopping" element={<ShoppingListPage />} />
               <Route path="inventario" element={<InventarioPage />} />
               <Route path="hogar" element={<HogarPage />} />

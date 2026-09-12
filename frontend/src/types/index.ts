@@ -150,6 +150,50 @@ export interface BulkImportRequest {
   new_mappings?: { patron: string; category_id: string }[];
 }
 
+export interface TransactionUpdate {
+  user_id?: string | null;
+  account_id?: string | null;
+  category_id?: string | null;
+  tipo?: TransactionType;
+  monto?: number;
+  moneda?: string;
+  es_compartido?: boolean;
+  split_ratio?: number;
+  tipo_cambio?: number;
+  descripcion?: string;
+  fecha?: string;
+}
+
+export interface SettlementCreate {
+  source_user_id?: string | null;
+  target_user_id?: string | null;
+  source_account_id?: string | null;
+  target_account_id?: string | null;
+  monto: number;
+  moneda?: string;
+  descripcion?: string;
+  fecha?: string;
+}
+
+export type InvestmentType =
+  | 'CEDEAR_ETF'
+  | 'CEDEAR_STOCK'
+  | 'FCI_ARS'
+  | 'FCI_USD'
+  | 'CRYPTO'
+  | 'SAVINGS_USD';
+
+export interface InvestmentAsset {
+  id: string;
+  ticker: string;
+  nombre: string;
+  tipo: InvestmentType;
+  cantidad: number;
+  precio_promedio_compra: number;
+  precio_actual: number;
+  moneda: 'ARS' | 'USD';
+}
+
 export interface CoupleBalance {
   net_balance: number;
   active_user_id: string;

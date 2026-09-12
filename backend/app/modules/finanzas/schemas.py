@@ -130,12 +130,36 @@ class TransactionSplitCreate(BaseModel):
     fecha: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class TransactionUpdate(BaseModel):
+    user_id: uuid.UUID | None = None
+    account_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    tipo: TransactionTypeEnum | None = None
+    monto: Decimal | None = Field(default=None, gt=0)
+    moneda: str | None = Field(default=None, max_length=10)
+    es_compartido: bool | None = None
+    split_ratio: Decimal | None = Field(default=None, ge=0, le=1)
+    descripcion: str | None = Field(default=None, max_length=255)
+    fecha: datetime | None = None
+
+
+class TransactionBulkDelete(BaseModel):
+    ids: list[uuid.UUID] | None = None
+    user_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+
+
 class SettlementCreate(BaseModel):
-    source_account_id: uuid.UUID
-    target_account_id: uuid.UUID
+    source_user_id: uuid.UUID | None = None
+    target_user_id: uuid.UUID | None = None
+    source_account_id: uuid.UUID | None = None
+    target_account_id: uuid.UUID | None = None
     monto: Decimal = Field(..., gt=0)
     moneda: str = Field(default="ARS", max_length=10)
-    descripcion: str = Field(default="Liquidación de saldo de pareja", max_length=255)
+    descripcion: str = Field(default="Devolución / Reintegro de pareja", max_length=255)
+    fecha: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TransactionOut(TransactionBase):
@@ -306,6 +330,12 @@ class CashflowOut(BaseModel):
 class CategoryMappingCreate(BaseModel):
     patron: str = Field(..., min_length=2, max_length=100)
     category_id: uuid.UUID
+
+
+class CategoryMappingUpdate(BaseModel):
+    patron: str | None = Field(default=None, min_length=2, max_length=100)
+    category_id: uuid.UUID | None = None
+
 
 
 class CategoryMappingOut(BaseModel):

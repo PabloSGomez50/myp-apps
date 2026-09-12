@@ -2,7 +2,11 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Wallet, ShoppingCart, PlusCircle, Boxes, Settings } from 'lucide-react';
 
-export const BottomNav: React.FC = () => {
+interface Props {
+  onQuickTxClick?: () => void;
+}
+
+export const BottomNav: React.FC<Props> = ({ onQuickTxClick }) => {
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-2 flex items-center justify-around z-40">
       <NavLink
@@ -29,10 +33,11 @@ export const BottomNav: React.FC = () => {
         <span>Compras</span>
       </NavLink>
 
-      {/* Floating Action Button for Quick Expense */}
+      {/* Floating Action Button for Quick Expense (< 3s) */}
       <button
-        onClick={() => alert('Modal de Carga Rápida de Gasto')}
-        className="w-12 h-12 -mt-6 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow-lg shadow-emerald-500/30 transition transform active:scale-95"
+        onClick={onQuickTxClick}
+        title="Registrar Gasto Rápido"
+        className="w-12 h-12 -mt-6 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow-lg shadow-emerald-500/30 transition transform active:scale-95 cursor-pointer"
       >
         <PlusCircle className="w-7 h-7" />
       </button>

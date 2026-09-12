@@ -76,6 +76,7 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['couple-net'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       onClose();

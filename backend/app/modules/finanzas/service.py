@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,6 +36,7 @@ from app.modules.finanzas.schemas import (
     CategoryCreate,
     CategoryMappingCreate,
     CategoryMappingOut,
+    CategoryMappingUpdate,
     CategoryOut,
     CategoryUpdate,
     CoupleBalanceOut,
@@ -52,7 +53,10 @@ from app.modules.finanzas.schemas import (
     ShoppingListCreate,
     ShoppingListOut,
     TransactionCreate,
+    TransactionBase,
+    TransactionBulkDelete,
     TransactionOut,
+    TransactionUpdate,
     TransactionSplitCreate,
 )
 
@@ -161,6 +165,19 @@ class FinanzasService:
         await db.commit()
         await db.refresh(category)
         return category
+
+    @staticmethod
+    async def delete_category(db: AsyncSession, category_id: uuid.UUID) -> bool:
+        result = await db.execute(select(Category).where(Category.id == category_id))
+        category = result.scalar_one_or_none()
+        if not category:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada."
+            )
+        category.is_active = False
+        await db.commit()
+        return True
+
 
     @staticmethod
     async def create_budget(
@@ -286,23 +303,26 @@ class FinanzasService:
     async def create_settlement(
         db: AsyncSession, user_id: uuid.UUID, household_id: uuid.UUID, data: SettlementCreate
     ) -> Transaction:
-        # Verify source and target accounts
-        source_res = await db.execute(select(Account).where(Account.id == data.source_account_id))
-        source_account = source_res.scalar_one_or_none()
-        target_res = await db.execute(select(Account).where(Account.id == data.target_account_id))
-        target_account = target_res.scalar_one_or_none()
+        payer_id = data.source_user_id if data.source_user_id else user_id
 
-        if not source_account or not target_account:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Cuentas de liquidación no encontradas.",
+        # Verify source and target accounts if provided
+        source_account = None
+        target_account = None
+        if data.source_account_id and data.target_account_id:
+            source_res = await db.execute(
+                select(Account).where(Account.id == data.source_account_id)
             )
+            source_account = source_res.scalar_one_or_none()
+            target_res = await db.execute(
+                select(Account).where(Account.id == data.target_account_id)
+            )
+            target_account = target_res.scalar_one_or_none()
 
         # Create settlement transaction
         settlement_tx = Transaction(
             household_id=household_id,
             account_id=data.source_account_id,
-            user_id=user_id,
+            user_id=payer_id,
             category_id=None,
             tipo=TransactionTypeEnum.SETTLEMENT,
             monto=data.monto,
@@ -310,17 +330,120 @@ class FinanzasService:
             es_compartido=False,
             split_ratio=Decimal("0.00"),
             descripcion=data.descripcion,
-            fecha=datetime.now(UTC),
+            fecha=data.fecha or datetime.now(UTC),
         )
         db.add(settlement_tx)
 
-        # Transfer money between personal accounts
-        source_account.saldo_actual -= data.monto
-        target_account.saldo_actual += data.monto
+        # Transfer money between accounts if present
+        if source_account and target_account:
+            source_account.saldo_actual -= data.monto
+            target_account.saldo_actual += data.monto
 
         await db.commit()
         await db.refresh(settlement_tx)
         return settlement_tx
+
+    @staticmethod
+    async def get_transactions(
+        db: AsyncSession,
+        household_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
+        category_id: uuid.UUID | None = None,
+        limit: int = 200,
+    ) -> list[Transaction]:
+        query = (
+            select(Transaction)
+            .options(selectinload(Transaction.account), selectinload(Transaction.category))
+            .where(Transaction.household_id == household_id)
+            .order_by(Transaction.fecha.desc(), Transaction.created_at.desc())
+        )
+        if user_id:
+            query = query.where(Transaction.user_id == user_id)
+        if category_id:
+            query = query.where(Transaction.category_id == category_id)
+
+        if limit > 0:
+            query = query.limit(limit)
+
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def update_transaction(
+        db: AsyncSession,
+        transaction_id: uuid.UUID,
+        household_id: uuid.UUID,
+        data: TransactionUpdate,
+    ) -> Transaction:
+        res = await db.execute(
+            select(Transaction)
+            .options(selectinload(Transaction.account), selectinload(Transaction.category))
+            .where(Transaction.id == transaction_id, Transaction.household_id == household_id)
+        )
+        tx = res.scalar_one_or_none()
+        if not tx:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Movimiento no encontrado."
+            )
+
+        update_dict = data.model_dump(exclude_unset=True)
+        for key, value in update_dict.items():
+            setattr(tx, key, value)
+
+        await db.commit()
+        await db.refresh(tx)
+        return tx
+
+    @staticmethod
+    async def delete_transaction(
+        db: AsyncSession, transaction_id: uuid.UUID, household_id: uuid.UUID
+    ) -> bool:
+        res = await db.execute(
+            select(Transaction).where(
+                Transaction.id == transaction_id, Transaction.household_id == household_id
+            )
+        )
+        tx = res.scalar_one_or_none()
+        if not tx:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Movimiento no encontrado."
+            )
+
+        await db.delete(tx)
+        await db.commit()
+        return True
+
+    @staticmethod
+    async def delete_all_transactions(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> int:
+        res = await db.execute(
+            delete(Transaction).where(Transaction.household_id == household_id)
+        )
+        await db.commit()
+        return res.rowcount
+
+    @staticmethod
+    async def delete_bulk_transactions(
+        db: AsyncSession, household_id: uuid.UUID, data: TransactionBulkDelete
+    ) -> int:
+        stmt = delete(Transaction).where(Transaction.household_id == household_id)
+        if data.ids is not None:
+            if not data.ids:
+                return 0
+            stmt = stmt.where(Transaction.id.in_(data.ids))
+        if data.user_id:
+            stmt = stmt.where(Transaction.user_id == data.user_id)
+        if data.category_id:
+            stmt = stmt.where(Transaction.category_id == data.category_id)
+        if data.start_date:
+            stmt = stmt.where(Transaction.fecha >= data.start_date)
+        if data.end_date:
+            stmt = stmt.where(Transaction.fecha <= data.end_date)
+
+        res = await db.execute(stmt)
+        await db.commit()
+        return res.rowcount
 
     @staticmethod
     async def get_couple_net_balance(
@@ -797,6 +920,43 @@ class FinanzasService:
             .where(CategoryMapping.id == mapping.id)
         )
         return CategoryMappingOut.model_validate(mapping_reloaded.scalar_one())
+
+    @staticmethod
+    async def update_category_mapping(
+        db: AsyncSession, mapping_id: uuid.UUID, data: CategoryMappingUpdate
+    ) -> CategoryMappingOut:
+        result = await db.execute(select(CategoryMapping).where(CategoryMapping.id == mapping_id))
+        mapping = result.scalar_one_or_none()
+        if not mapping:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Regla de automapeo no encontrada."
+            )
+        if data.patron is not None:
+            mapping.patron = data.patron.strip().lower()
+        if data.category_id is not None:
+            mapping.category_id = data.category_id
+
+        await db.commit()
+
+        mapping_reloaded = await db.execute(
+            select(CategoryMapping)
+            .options(selectinload(CategoryMapping.category))
+            .where(CategoryMapping.id == mapping.id)
+        )
+        return CategoryMappingOut.model_validate(mapping_reloaded.scalar_one())
+
+    @staticmethod
+    async def delete_category_mapping(db: AsyncSession, mapping_id: uuid.UUID) -> bool:
+        result = await db.execute(select(CategoryMapping).where(CategoryMapping.id == mapping_id))
+        mapping = result.scalar_one_or_none()
+        if not mapping:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Regla de automapeo no encontrada."
+            )
+        await db.delete(mapping)
+        await db.commit()
+        return True
+
 
     @staticmethod
     async def parse_csv_content(

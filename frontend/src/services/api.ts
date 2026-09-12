@@ -129,6 +129,25 @@ export const finanzasApi = {
     return data;
   },
 
+  updateCategory: async (
+    id: string,
+    categoryData: {
+      nombre?: string;
+      tipo_gasto?: string;
+      icono?: string;
+      color?: string;
+      is_active?: boolean;
+    }
+  ): Promise<Category> => {
+    const { data } = await api.put<Category>(`/finanzas/categories/${id}`, categoryData);
+    return data;
+  },
+
+  deleteCategory: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/categories/${id}`);
+  },
+
+
   getBudgets: async (month: number, year: number): Promise<Budget[]> => {
     const { data } = await api.get<Budget[]>('/finanzas/budgets', {
       params: { month, year },
@@ -195,6 +214,19 @@ export const finanzasApi = {
     return data;
   },
 
+  updateCategoryMapping: async (
+    id: string,
+    mappingData: { patron?: string; category_id?: string }
+  ): Promise<CategoryMapping> => {
+    const { data } = await api.put<CategoryMapping>(`/finanzas/category-mappings/${id}`, mappingData);
+    return data;
+  },
+
+  deleteCategoryMapping: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/category-mappings/${id}`);
+  },
+
+
   parseCsv: async (file: File): Promise<CsvParseResponse> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -211,12 +243,44 @@ export const finanzasApi = {
     return data;
   },
 
+  getTransactions: async (params?: { user_id?: string; category_id?: string; limit?: number }): Promise<Transaction[]> => {
+    const { data } = await api.get<Transaction[]>('/finanzas/transactions', { params });
+    return data;
+  },
+
+  updateTransaction: async (id: string, txData: Partial<Transaction>): Promise<Transaction> => {
+    const { data } = await api.put<Transaction>(`/finanzas/transactions/${id}`, txData);
+    return data;
+  },
+
+  deleteTransaction: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/transactions/${id}`);
+  },
+
+  deleteAllTransactions: async (): Promise<void> => {
+    await api.delete('/finanzas/transactions/all');
+  },
+
+  deleteFilteredTransactions: async (payload: {
+    ids?: string[];
+    user_id?: string;
+    category_id?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<{ deleted_count: number }> => {
+    const { data } = await api.post<{ deleted_count: number }>('/finanzas/transactions/bulk-delete', payload);
+    return data;
+  },
+
   createSettlement: async (settlementData: {
-    source_account_id: string;
-    target_account_id: string;
+    source_user_id?: string | null;
+    target_user_id?: string | null;
+    source_account_id?: string | null;
+    target_account_id?: string | null;
     monto: number;
     moneda?: string;
     descripcion?: string;
+    fecha?: string;
   }): Promise<Transaction> => {
     const { data } = await api.post<Transaction>('/finanzas/transactions/settlement', settlementData);
     return data;

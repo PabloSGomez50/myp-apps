@@ -38,5 +38,7 @@ Este glosario establece las definiciones formales del vocabulario utilizado en e
 
 - **Descuento Jerárquico (`Hierarchical Discount`)**: Regla de cálculo de promociones de compra en la que un ítem aplica su descuento específico individual si existe; de lo contrario, hereda el descuento base general del carrito (ej. 20% bancario del día).
 - **Fondo de Emergencia (`Emergency Fund`)**: Meta de ahorro calculada en base al promedio de gastos fijos del hogar (`FIXED_HOUSEHOLD` + `FIXED_PERSONAL`) para cubrir entre 3 y 6 meses de contingencias.
-- **Dinero Libre Disponible (`Free Cashflow`)**: Margen financiero mensual disponible tras descontar gastos fijos, presupuestos variables y metas de ahorro de los ingresos proyectados.
+- **Ingreso / Sueldo (`Income / Salary`)**: Transacción con `tipo = INCOME` abonada a la cuenta o billetera de un integrante específico del hogar para alimentar el flujo financiero disponible del período.
+- **Flujo Libre del Mes (`Monthly Free Cashflow`)**: Margen financiero sobrante o déficit real calculado automáticamente en tiempo real ($\text{Total Ingresos del Mes} - \text{Total Gastos del Mes}$).
+- **Analítica Visual de Gastos (`Category Expense Analytics`)**: Conjunto de widgets de visualización con `recharts` que incluyen desgloses porcentuales por categoría (Pie Chart) y evoluciones mensuales apiladas (Stacked Bar Chart).
 - **Broker (`Investment Broker`)**: Registro simplificado de saldos y movimientos en plataformas de inversión (ej. IOL, Balanz, Binance) en ARS, USD y Crypto.
