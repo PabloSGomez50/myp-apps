@@ -76,3 +76,28 @@ async def test_switch_profile_with_pin(client: AsyncClient):
         json={"target_user_id": partner_id, "pin": "9999"},
     )
     assert bad_pin_res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_user_color(client: AsyncClient):
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "user_color@mypapps.com",
+            "password": "password123",
+            "nombre": "ColorUser",
+            "color_avatar": "#16a34a",
+        },
+    )
+    assert reg.status_code == 201
+    user_id = reg.json()["user"]["id"]
+    token = reg.json()["access_token"]
+
+    update_res = await client.put(
+        f"/api/v1/core/users/{user_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"color_avatar": "#8b5cf6"},
+    )
+    assert update_res.status_code == 200, update_res.text
+    assert update_res.json()["color_avatar"] == "#8b5cf6"
+

@@ -14,6 +14,7 @@ from app.modules.core.schemas import (
     UserCreate,
     UserLogin,
     UserOut,
+    UserUpdate,
 )
 from app.modules.core.service import CoreService
 
@@ -76,3 +77,14 @@ async def add_household_member(
             detail="No hay un hogar activo vinculado.",
         )
     return await CoreService.add_household_member(db, household_id, data.email, data.nombre)
+
+
+@core_router.put("/users/{id}", response_model=UserOut, status_code=status.HTTP_200_OK)
+async def update_user(
+    id: uuid.UUID,
+    data: UserUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    return await CoreService.update_user(db, id, data)
+

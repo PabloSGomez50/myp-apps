@@ -13,7 +13,7 @@ from app.core.security import (
     verify_pin,
 )
 from app.modules.core.models import CurrencyEnum, Household, HouseholdMember, RoleEnum, User
-from app.modules.core.schemas import PinSwitchRequest, TokenResponse, UserCreate, UserLogin, UserOut
+from app.modules.core.schemas import PinSwitchRequest, TokenResponse, UserCreate, UserLogin, UserOut, UserUpdate
 
 
 class CoreService:
@@ -275,3 +275,24 @@ class CoreService:
             await db.commit()
 
         return await CoreService.get_household_details(db, household_id)
+
+    @staticmethod
+    async def update_user(db: AsyncSession, target_id: uuid.UUID, data: UserUpdate) -> User:
+        user = await db.get(User, target_id)
+        if not user:
+            member = await db.get(HouseholdMember, target_id)
+            if member and member.user_id:
+                user = await db.get(User, member.user_id)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado."
+            )
+        if data.nombre is not None:
+            user.nombre = data.nombre
+        if data.color_avatar is not None:
+            user.color_avatar = data.color_avatar
+        await db.commit()
+        await db.refresh(user)
+        return user
+
