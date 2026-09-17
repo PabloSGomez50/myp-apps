@@ -103,6 +103,37 @@ export const NewIncomeModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
+
+          {/* Date & Concept Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Fecha
+              </label>
+              <input
+                type="date"
+                required
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-emerald-400" /> Concepto
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Ej. Sueldo, Bono"
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
           {/* Member Selection */}
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
@@ -146,36 +177,6 @@ export const NewIncomeModal: React.FC<Props> = ({ isOpen, onClose }) => {
               onChange={(e) => setMonto(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
             />
-          </div>
-
-          {/* Date & Concept Inputs */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Fecha
-              </label>
-              <input
-                type="date"
-                required
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5 text-emerald-400" /> Concepto
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ej. Sueldo, Bono"
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
           </div>
 
           {/* Footer Actions */}

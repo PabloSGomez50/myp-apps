@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, ArrowRight, ShieldCheck, UserPlus, LogIn, KeyRound } from 'lucide-react';
+import { ArrowRight, UserPlus, LogIn, KeyRound, ShieldCheck, UserCheck } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Login Form State
-  const [loginEmail, setLoginEmail] = useState('');
+  const initialSavedEmail = localStorage.getItem('myp_remembered_email') || '';
+  const [loginEmail, setLoginEmail] = useState(initialSavedEmail);
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberEmail, setRememberEmail] = useState(() => !!initialSavedEmail);
+  const [isChangingUser, setIsChangingUser] = useState(false);
 
   // Register Form State
   const [regNombre, setRegNombre] = useState('');
@@ -25,6 +28,11 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setErrorMsg(null);
     try {
+      if (rememberEmail) {
+        localStorage.setItem('myp_remembered_email', loginEmail);
+      } else {
+        localStorage.removeItem('myp_remembered_email');
+      }
       await login(loginEmail, loginPassword);
       navigate('/finanzas');
     } catch (err: unknown) {
@@ -56,13 +64,17 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const hasSavedUser = !!initialSavedEmail && !isChangingUser;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
       <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <HeartHandshake className="w-7 h-7" />
-          </div>
+          <img
+            src="/logo-myp-v1.png"
+            alt="myp-apps logo"
+            className="w-16 h-16 mx-auto object-contain rounded-2xl shadow-md border border-emerald-500/20"
+          />
           <h2 className="text-2xl font-bold text-white tracking-tight">myp-apps</h2>
           <p className="text-xs text-slate-400">Gestión de Finanzas e Inventario para la Convivencia</p>
         </div>
@@ -110,18 +122,75 @@ export const LoginPage: React.FC = () => {
         {/* Login Form */}
         {activeTab === 'login' ? (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs font-medium text-slate-300 block mb-1.5">Correo Electrónico</label>
-              <input
-                type="email"
-                required
-                placeholder="ejemplo@myp.local"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 transition"
-              />
+            {hasSavedUser ? (
+              /* Saved User Preview Card */
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 animate-in fade-in">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center font-bold text-white text-sm shadow-md flex-shrink-0">
+                    {loginEmail[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{loginEmail}</p>
+                    <span className="text-[10px] text-emerald-400 font-semibold block">Usuario Recordado</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsChangingUser(true);
+                    setLoginEmail('');
+                  }}
+                  className="text-[11px] font-semibold text-slate-300 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex-shrink-0"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              /* Standard Email Input */
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1.5">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@myp.local"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 transition"
+                />
+              </div>
+            )}
+
+            {/* Remember Email Toggle (Before Password Field) */}
+            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${
+                    rememberEmail ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">Recordar mi usuario</span>
+                  <span className="text-[10px] text-slate-400 block">Guardar acceso directo en este equipo</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRememberEmail(!rememberEmail)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                  rememberEmail ? 'bg-emerald-600' : 'bg-slate-800'
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    rememberEmail ? 'translate-x-4' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
 
+            {/* Password Input */}
             <div>
               <label className="text-xs font-medium text-slate-300 block mb-1.5">Contraseña</label>
               <input

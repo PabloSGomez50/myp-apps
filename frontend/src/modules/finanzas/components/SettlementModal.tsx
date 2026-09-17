@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { X, ArrowRightLeft, UserCheck, Calendar } from 'lucide-react';
+import { X, ArrowRightLeft, UserCheck, Calendar, DollarSign, Tag } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -20,7 +20,7 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [sourceUserId, setSourceUserId] = useState<string>(user?.id || '');
   const [targetUserId, setTargetUserId] = useState<string>('');
 
-  // Fetch household members to ensure target user list is complete
+  // Fetch household members
   const { data: householdData } = useQuery({
     queryKey: ['household'],
     queryFn: () => coreApi.getHousehold(),
@@ -30,6 +30,16 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
     householdData?.members && householdData.members.length > 0
       ? householdData.members.map((m) => m.user)
       : authMembers;
+
+  // Auto-set initial source and target ONCE when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const activeUser = user?.id || membersList[0]?.id || '';
+      setSourceUserId(activeUser);
+      const other = membersList.find((m) => m.id !== activeUser);
+      setTargetUserId(other?.id || '');
+    }
+  }, [isOpen]);
 
   const settlementMutation = useMutation({
     mutationFn: async () => {
@@ -62,34 +72,52 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setMonto('');
     setDescripcion('Devolución / Reintegro de pareja');
     setSourceUserId(user?.id || '');
-    setTargetUserId('');
+    if (membersList.length >= 2 && user?.id) {
+      const other = membersList.find((m) => m.id !== user.id);
+      setTargetUserId(other?.id || '');
+    } else {
+      setTargetUserId('');
+    }
+  };
+
+  const handleSelectSource = (id: string) => {
+    setSourceUserId(id);
+    if (membersList.length === 2) {
+      const other = membersList.find((m) => m.id !== id);
+      if (other) setTargetUserId(other.id);
+    } else if (id === targetUserId) {
+      const other = membersList.find((m) => m.id !== id);
+      setTargetUserId(other ? other.id : '');
+    }
+  };
+
+  const handleSelectTarget = (id: string) => {
+    setTargetUserId(id);
+    if (membersList.length === 2) {
+      const other = membersList.find((m) => m.id !== id);
+      if (other) setSourceUserId(other.id);
+    } else if (id === sourceUserId) {
+      const other = membersList.find((m) => m.id !== id);
+      setSourceUserId(other ? other.id : '');
+    }
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-              <ArrowRightLeft className="w-5 h-5" />
+      <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-indigo-400">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+              <ArrowRightLeft className="w-5 h-5 text-indigo-400" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-white">Devolución / Reintegro</h3>
-              <p className="text-xs text-slate-400">Registrar pago parcial o saldo de cuenta entre miembros</p>
-            </div>
+            <h3 className="text-base font-bold text-white">Devolución / Reintegro</h3>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+            <X className="w-4 h-4" />
           </button>
         </div>
-
-        {settlementMutation.isError && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-            {(settlementMutation.error as Error).message}
-          </div>
-        )}
 
         <form
           onSubmit={(e) => {
@@ -98,99 +126,132 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
           }}
           className="space-y-4"
         >
-          {/* Fecha */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Fecha del Reintegro
-            </label>
-            <input
-              type="date"
-              required
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-            />
-          </div>
+          {settlementMutation.isError && (
+            <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+              {(settlementMutation.error as Error).message}
+            </div>
+          )}
 
-          {/* Emisor (Quien devuelve/paga) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> Quien realiza la devolución (Emisor)
-            </label>
-            <select
-              value={sourceUserId}
-              onChange={(e) => setSourceUserId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">-- Seleccionar Emisor --</option>
-              {membersList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  👤 {m.nombre} ({m.email})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Destinatario (Quien recibe) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> Quien recibe el pago (Destinatario)
-            </label>
-            <select
-              value={targetUserId}
-              onChange={(e) => setTargetUserId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="">-- Seleccionar Destinatario --</option>
-              {membersList
-                .filter((m) => m.id !== sourceUserId)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    👤 {m.nombre} ({m.email})
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          {/* Monto & Descripción */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Monto ($ ARS)</label>
+          {/* Date & Concept Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Fecha
+              </label>
               <input
-                type="number"
-                step="0.01"
+                type="date"
                 required
-                placeholder="0.00"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-indigo-500"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Concepto / Nota</label>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-indigo-400" /> Concepto
+              </label>
               <input
                 type="text"
                 required
+                placeholder="Devolución / Reintegro"
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="pt-2 flex justify-end gap-3">
+          {/* Emisor Selection */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> ¿Quién envía la devolución? (Emisor)
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {membersList.map((m) => (
+                <button
+                  type="button"
+                  key={m.id}
+                  onClick={() => handleSelectSource(m.id)}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition text-xs font-medium ${
+                    sourceUserId === m.id
+                      ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                      : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white flex-shrink-0"
+                    style={{ backgroundColor: m.color_avatar || '#16a34a' }}
+                  >
+                    {m.nombre[0]}
+                  </div>
+                  <span className="truncate">{m.nombre}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Destinatario Selection */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> ¿Quién recibe la devolución? (Destinatario)
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {membersList.map((m) => {
+                const isSelected = targetUserId === m.id;
+                return (
+                  <button
+                    type="button"
+                    key={m.id}
+                    onClick={() => handleSelectTarget(m.id)}
+                    className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition text-xs font-medium ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-500/10 text-white'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white flex-shrink-0"
+                      style={{ backgroundColor: m.color_avatar || '#16a34a' }}
+                    >
+                      {m.nombre[0]}
+                    </div>
+                    <span className="truncate">{m.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Amount Input */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5 text-indigo-400" /> Monto Total ($ ARS)
+            </label>
+            <input
+              type="number"
+              step="any"
+              required
+              placeholder="Ej. 50000"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Footer Actions */}
+          <div className="pt-2 flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium"
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={settlementMutation.isPending}
-              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20"
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 disabled:opacity-50"
             >
               {settlementMutation.isPending ? 'Guardando...' : 'Registrar Devolución'}
             </button>

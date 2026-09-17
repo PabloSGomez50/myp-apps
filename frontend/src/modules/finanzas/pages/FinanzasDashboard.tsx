@@ -144,7 +144,7 @@ export const FinanzasDashboard: React.FC = () => {
         }
       }
     });
-    return { paid, received, net: paid - received };
+    return { paid, received, net: received - paid };
   }, [transactions, viewScope, currentMonth, currentYear]);
 
   // Flujo Libre del Mes = Total Ingresos - Total Gastos Imputables

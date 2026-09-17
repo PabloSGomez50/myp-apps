@@ -91,7 +91,13 @@ export const coreApi = {
     const { data } = await api.post<Household>('/core/household/members', memberData);
     return data;
   },
+
+  updateUser: async (id: string, userData: { nombre?: string; color_avatar?: string }): Promise<User> => {
+    const { data } = await api.put<User>(`/core/users/${id}`, userData);
+    return data;
+  },
 };
+
 
 // ==============================================================================
 // Finanzas API Services

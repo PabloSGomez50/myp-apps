@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { finanzasApi } from '@/services/api';
+import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { X, Plus, Calendar, UserCheck, Tag, Check, DollarSign } from 'lucide-react';
+import { X, Plus, Calendar, UserCheck, Tag, Check, DollarSign, Sparkles } from 'lucide-react';
 import { ExpenseType } from '@/types';
 
 interface Props {
@@ -17,7 +17,6 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const [fecha, setFecha] = useState<string>(todayStr);
   const [selectedUserId, setSelectedUserId] = useState<string>(user?.id || '');
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [monto, setMonto] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('');
@@ -27,18 +26,71 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [showAddCatInline, setShowAddCatInline] = useState<boolean>(false);
   const [catNombre, setCatNombre] = useState<string>('');
   const [catTipoGasto, setCatTipoGasto] = useState<ExpenseType>('VARIABLE_HOUSEHOLD');
-  const [catColor, setCatColor] = useState<string>('emerald');
+  const [catColor, setCatColor] = useState<string>('#16a34a');
 
   // Queries
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => finanzasApi.getAccounts(false),
+  const { data: householdData } = useQuery({
+    queryKey: ['household'],
+    queryFn: () => coreApi.getHousehold(),
   });
+
+  const membersList =
+    householdData?.members && householdData.members.length > 0
+      ? householdData.members.map((m) => m.user)
+      : householdMembers;
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => finanzasApi.getCategories(),
   });
+
+  const { data: mappings = [] } = useQuery({
+    queryKey: ['category-mappings'],
+    queryFn: () => finanzasApi.getCategoryMappings(),
+  });
+
+  // Default selected user to logged in user when modal opens
+  useEffect(() => {
+    if (isOpen && !selectedUserId && (user?.id || membersList[0]?.id)) {
+      setSelectedUserId(user?.id || membersList[0]?.id);
+    }
+  }, [isOpen, selectedUserId, user, membersList]);
+
+  // Auto-set esCompartido to false for personal expense categories (FIXED_PERSONAL, VARIABLE_PERSONAL)
+  useEffect(() => {
+    if (selectedCategoryId && categories.length > 0) {
+      const selectedCat = categories.find((c) => c.id === selectedCategoryId);
+      if (selectedCat) {
+        if (selectedCat.tipo_gasto === 'FIXED_PERSONAL' || selectedCat.tipo_gasto === 'VARIABLE_PERSONAL') {
+          setEsCompartido(false);
+        } else {
+          setEsCompartido(true);
+        }
+      }
+    }
+  }, [selectedCategoryId, categories]);
+
+  // Suggestions based on selected Category and Automappings
+  const categorySuggestions = useMemo(() => {
+    if (!selectedCategoryId) return [];
+    return mappings
+      .filter((m) => m.category_id === selectedCategoryId)
+      .map((m) => m.patron);
+  }, [selectedCategoryId, mappings]);
+
+  // Auto-match category when typing description if category not set yet
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setDescripcion(val);
+
+    if (val.length >= 2) {
+      const lower = val.toLowerCase().trim();
+      const match = mappings.find((m) => lower.includes(m.patron.toLowerCase()));
+      if (match && match.category_id) {
+        setSelectedCategoryId(match.category_id);
+      }
+    }
+  };
 
   // Mutations
   const createTxMutation = useMutation({
@@ -50,13 +102,16 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
       if (!selectedCategoryId) {
         throw new Error('Selecciona una categoría para el gasto');
       }
+      const activeUser = selectedUserId || user?.id || membersList[0]?.id;
+      if (!activeUser) {
+        throw new Error('Selecciona el usuario que realizó el pago');
+      }
 
       const isoFecha = new Date(fecha).toISOString();
 
       if (esCompartido) {
         return finanzasApi.createSplitTransaction({
-          user_id: selectedUserId || user?.id,
-          account_id: selectedAccountId || undefined,
+          user_id: activeUser,
           category_id: selectedCategoryId,
           monto: montoNum,
           descripcion,
@@ -64,8 +119,7 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
         });
       } else {
         return finanzasApi.createTransaction({
-          user_id: selectedUserId || user?.id,
-          account_id: selectedAccountId || undefined,
+          user_id: activeUser,
           category_id: selectedCategoryId,
           monto: montoNum,
           es_compartido: false,
@@ -104,7 +158,6 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const resetForm = () => {
     setFecha(todayStr);
     setSelectedUserId(user?.id || '');
-    setSelectedAccountId('');
     setSelectedCategoryId('');
     setMonto('');
     setDescripcion('');
@@ -149,110 +202,10 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
           }}
           className="space-y-4"
         >
-          {/* Row 1: Fecha & Monto */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Fecha del Gasto
-              </label>
-              <input
-                type="date"
-                required
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Monto ($ ARS)</label>
-              <input
-                type="number"
-                step="0.01"
-                required
-                placeholder="0.00"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-          </div>
-
-          {/* Row 2: Descripción */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Descripción / Concepto</label>
-            <input
-              type="text"
-              required
-              placeholder="Ej. Coto, Rapanui, Edesur, Nafta"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          {/* Section: ¿Quién realizó el pago? (User Selector Grid) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> ¿Quién realizó el pago?
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {householdMembers.map((m) => {
-                const isSelected = selectedUserId === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedUserId(m.id);
-                      setSelectedAccountId('');
-                    }}
-                    className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition ${
-                      isSelected
-                        ? 'bg-indigo-600/20 border-indigo-500 text-white'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-white text-xs"
-                      style={{ backgroundColor: m.color_avatar }}
-                    >
-                      {m.nombre[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate">{m.nombre}</p>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Optional Account Selector Dropdown */}
-            {accounts.length > 0 && (
-              <div className="mt-2">
-                <select
-                  value={selectedAccountId}
-                  onChange={(e) => setSelectedAccountId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800/80 rounded-xl text-[11px] text-slate-400 focus:outline-none"
-                >
-                  <option value="">-- Opcional: Seleccionar cuenta bancaria o billetera --</option>
-                  {accounts
-                    .filter((a) => !selectedUserId || a.user_id === selectedUserId)
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        💳 {a.nombre} (${a.saldo_actual.toLocaleString('es-AR')})
-                      </option>
-                    ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Section: Categorías (Grid Responsive + Inline Create) */}
+          {/* Fila 1: Menú de Categorías de Gastos */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-emerald-400" /> Categoría de Gasto
               </label>
             </div>
@@ -265,31 +218,41 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedCategoryId(cat.id)}
-                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between gap-1 transition ${
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between gap-1.5 transition ${
                       isSelected
                         ? 'bg-emerald-600/20 border-emerald-500 text-white'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        {cat.tipo_gasto === 'LEISURE_COUPLE' ? 'Ocio' : cat.tipo_gasto.includes('HOUSEHOLD') ? 'Hogar' : 'Personal'}
-                      </span>
+                      <div
+                        className="w-3.5 h-3.5 rounded-md border border-slate-700"
+                        style={{ backgroundColor: cat.color || '#16a34a' }}
+                      />
                       {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                     </div>
-                    <p className="text-xs font-semibold truncate">{cat.nombre}</p>
+                    <div>
+                      <p className="text-xs font-semibold truncate text-white">{cat.nombre}</p>
+                      <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">
+                        {cat.tipo_gasto === 'LEISURE_COUPLE'
+                          ? 'Ocio'
+                          : cat.tipo_gasto.includes('HOUSEHOLD')
+                          ? 'Hogar'
+                          : 'Personal'}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
 
-              {/* Inline Add Category Pill Button */}
+              {/* Inline Add Category Button */}
               <button
                 type="button"
                 onClick={() => setShowAddCatInline(!showAddCatInline)}
                 className="p-2.5 rounded-2xl border border-dashed border-slate-700 hover:border-emerald-500/60 bg-slate-950/60 text-emerald-400 flex flex-col items-center justify-center gap-1 transition text-xs font-medium"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Nueva</span>
+                <span>Nueva</span>
               </button>
             </div>
 
@@ -327,28 +290,18 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-slate-400 font-medium">Color:</span>
-                  {['emerald', 'indigo', 'rose', 'amber', 'sky'].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setCatColor(c)}
-                      className={`w-5 h-5 rounded-full border transition ${
-                        catColor === c ? 'border-white scale-110' : 'border-transparent opacity-60'
-                      }`}
-                      style={{
-                        backgroundColor:
-                          c === 'emerald'
-                            ? '#10b981'
-                            : c === 'indigo'
-                            ? '#6366f1'
-                            : c === 'rose'
-                            ? '#f43f5e'
-                            : c === 'amber'
-                            ? '#f59e0b'
-                            : '#0ea5e9',
-                      }}
-                    />
-                  ))}
+                  <input
+                    type="color"
+                    value={catColor}
+                    onChange={(e) => setCatColor(e.target.value)}
+                    className="w-10 h-7 p-0.5 bg-slate-900 border border-slate-800 rounded-lg cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={catColor}
+                    onChange={(e) => setCatColor(e.target.value)}
+                    className="w-24 px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-white"
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2">
@@ -370,6 +323,107 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Fila 2: Descripción con Sugerencias de Automapeo */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center justify-between">
+              <span>Descripción / Concepto</span>
+              {categorySuggestions.length > 0 && (
+                <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-semibold">
+                  <Sparkles className="w-3 h-3" /> Sugerencias de automapeo disponibles
+                </span>
+              )}
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Ej. Coto, Rapanui, Edesur, Nafta"
+              value={descripcion}
+              onChange={handleDescriptionChange}
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+            />
+
+            {/* Suggestion Pills */}
+            {categorySuggestions.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-slate-400 font-medium">Sugerencias:</span>
+                {categorySuggestions.map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => setDescripcion(sug.charAt(0).toUpperCase() + sug.slice(1))}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 text-[11px] font-mono font-medium transition"
+                  >
+                    "{sug}"
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Fila 3: Fecha & Monto */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Fecha del Gasto
+              </label>
+              <input
+                type="date"
+                required
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-emerald-400" /> Monto ($ ARS)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                placeholder="0.00"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Fila 4: ¿Quién realizó el pago? (User Selector identical to NewIncomeModal) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-400" /> ¿Quién realizó el pago?
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {membersList.map((m) => {
+                const isSelected = selectedUserId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedUserId(m.id)}
+                    className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition text-xs font-medium ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-500/10 text-white font-bold'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white flex-shrink-0"
+                      style={{ backgroundColor: m.color_avatar || '#16a34a' }}
+                    >
+                      {m.nombre[0]}
+                    </div>
+                    <span className="truncate">{m.nombre}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 ml-auto flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Section: Split 50/50 Toggle */}

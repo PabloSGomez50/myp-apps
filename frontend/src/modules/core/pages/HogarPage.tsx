@@ -17,8 +17,20 @@ import {
   Filter,
   ArrowUpDown,
   Lock,
+  Palette,
 } from 'lucide-react';
 import { User, Category, CategoryMapping, ExpenseType } from '@/types';
+
+const PRESET_AVATAR_COLORS = [
+  '#10b981', // Emerald (Pablo default)
+  '#8b5cf6', // Purple (Martu default)
+  '#6366f1', // Indigo
+  '#f43f5e', // Rose
+  '#f59e0b', // Amber
+  '#0ea5e9', // Sky
+  '#14b8a6', // Teal
+  '#ec4899', // Pink
+];
 
 const EXPENSE_TYPES_INFO: { key: ExpenseType; label: string; desc: string; isShared: boolean; badgeColor: string }[] = [
   {
@@ -67,13 +79,15 @@ export const HogarPage: React.FC = () => {
   const [memberNombre, setMemberNombre] = useState<string>('');
   const [memberEmail, setMemberEmail] = useState<string>('');
 
+  // Editing User Color State
+  const [editingUserColorId, setEditingUserColorId] = useState<string | null>(null);
+
   // Category CRUD State
   const [isNewCategoryOpen, setIsNewCategoryOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [catNombre, setCatNombre] = useState<string>('');
   const [catTipoGasto, setCatTipoGasto] = useState<ExpenseType>('VARIABLE_HOUSEHOLD');
   const [catColor, setCatColor] = useState<string>('#16a34a');
-  const [catIcono, setCatIcono] = useState<string>('🏷️');
 
   // Category Mapping State (Create & Edit)
   const [isAddMappingOpen, setIsAddMappingOpen] = useState<boolean>(false);
@@ -119,13 +133,21 @@ export const HogarPage: React.FC = () => {
     },
   });
 
+  const updateUserColorMutation = useMutation({
+    mutationFn: ({ userId, color }: { userId: string; color: string }) =>
+      coreApi.updateUser(userId, { color_avatar: color }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['household'] });
+      setEditingUserColorId(null);
+    },
+  });
+
   const createCategoryMutation = useMutation({
     mutationFn: () =>
       finanzasApi.createCategory({
         nombre: catNombre,
         tipo_gasto: catTipoGasto,
         color: catColor,
-        icono: catIcono,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
@@ -141,7 +163,6 @@ export const HogarPage: React.FC = () => {
         nombre: catNombre,
         tipo_gasto: catTipoGasto,
         color: catColor,
-        icono: catIcono,
       });
     },
     onSuccess: () => {
@@ -193,7 +214,6 @@ export const HogarPage: React.FC = () => {
     setCatNombre('');
     setCatTipoGasto('VARIABLE_HOUSEHOLD');
     setCatColor('#16a34a');
-    setCatIcono('🏷️');
   };
 
   const resetMappingForm = () => {
@@ -206,7 +226,6 @@ export const HogarPage: React.FC = () => {
     setCatNombre(cat.nombre);
     setCatTipoGasto(cat.tipo_gasto);
     setCatColor(cat.color || '#16a34a');
-    setCatIcono(cat.icono || '🏷️');
   };
 
   const handleOpenEditMapping = (mapping: CategoryMapping) => {
@@ -269,7 +288,7 @@ export const HogarPage: React.FC = () => {
       {/* Header */}
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Configuración del Hogar, Categorías & Reglas</h2>
-        <p className="text-xs text-slate-400">Gestión de miembros de la convivencia, tipos de gastos y reglas de automapeo inteligente</p>
+        <p className="text-xs text-slate-400">Gestión de miembros de la convivencia, colores de avatar, tipos de gastos y reglas de automapeo</p>
       </div>
 
       {/* Hero Household Banner */}
@@ -285,14 +304,14 @@ export const HogarPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Section 1: Household Members */}
+      {/* Section 1: Household Members & Avatar Colors */}
       <div className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800 space-y-5 shadow-xl">
         <div className="flex items-center justify-between">
           <div>
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Users className="w-4 h-4 text-indigo-400" /> Miembros de la Convivencia
             </h4>
-            <p className="text-xs text-slate-400">Agrega o pre-registra miembros para asignar pagos e importar CSVs</p>
+            <p className="text-xs text-slate-400">Configura el color identificador de avatar con iniciales (P, M) para cada integrante</p>
           </div>
 
           <button
@@ -300,30 +319,74 @@ export const HogarPage: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 transition"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Agregar Miembro</span>
+            <span>Agregar Miembro</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {members.map((member) => (
-            <div key={member.id} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-md"
-                style={{ backgroundColor: member.user?.color_avatar || '#16a34a' }}
-              >
-                {member.user?.nombre ? member.user.nombre[0] : 'U'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-bold text-white truncate">{member.user?.nombre || 'Usuario'}</p>
-                  <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[9px] uppercase font-bold">
-                    {member.rol}
-                  </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {members.map((member) => {
+            const initialLetter = member.user?.nombre ? member.user.nombre[0].toUpperCase() : 'U';
+            const isEditingColor = editingUserColorId === member.user?.id;
+
+            return (
+              <div key={member.id} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center font-extrabold text-white text-base shadow-lg transition-transform hover:scale-105"
+                      style={{ backgroundColor: member.user?.color_avatar || '#16a34a' }}
+                    >
+                      {initialLetter}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-white truncate">{member.user?.nombre || 'Usuario'}</p>
+                        <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[9px] uppercase font-bold">
+                          {member.rol}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 truncate">{member.user?.email}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setEditingUserColorId(isEditingColor ? null : member.user.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                    title="Configurar Color de Avatar"
+                  >
+                    <Palette className="w-4 h-4 text-indigo-400" />
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 truncate">{member.user?.email}</p>
+
+                {/* Inline Color Palette Picker */}
+                {isEditingColor && (
+                  <div className="pt-2 border-t border-slate-900 space-y-2 animate-in fade-in">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Seleccionar Color Identificador:</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {PRESET_AVATAR_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => updateUserColorMutation.mutate({ userId: member.user.id, color })}
+                          className={`w-6 h-6 rounded-full border transition-transform ${
+                            member.user.color_avatar === color ? 'border-white scale-125 shadow-md' : 'border-transparent opacity-70 hover:opacity-100'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={member.user.color_avatar || '#16a34a'}
+                        onChange={(e) => updateUserColorMutation.mutate({ userId: member.user.id, color: e.target.value })}
+                        className="w-6 h-6 p-0 rounded-full bg-transparent border-0 cursor-pointer"
+                        title="Color Personalizado"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -334,7 +397,7 @@ export const HogarPage: React.FC = () => {
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Tag className="w-4 h-4 text-emerald-400" /> Categorías de Gastos ({categories.length})
             </h4>
-            <p className="text-xs text-slate-400">Listado de categorías del hogar, su clasificación y opciones de edición/baja</p>
+            <p className="text-xs text-slate-400">Listado de categorías del hogar con su indicador de color y opciones de edición/baja</p>
           </div>
 
           <button
@@ -345,7 +408,7 @@ export const HogarPage: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ Nueva Categoría</span>
+            <span>Nueva Categoría</span>
           </button>
         </div>
 
@@ -355,11 +418,9 @@ export const HogarPage: React.FC = () => {
               <div key={cat.id} className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0"
-                    style={{ backgroundColor: `${cat.color || '#16a34a'}20`, color: cat.color || '#16a34a' }}
-                  >
-                    {cat.icono || '🏷️'}
-                  </div>
+                    className="w-5 h-5 rounded-lg flex-shrink-0 border border-slate-700 shadow-sm"
+                    style={{ backgroundColor: cat.color || '#16a34a' }}
+                  />
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate">{cat.nombre}</p>
                     <span className="text-[10px] text-slate-400 uppercase font-semibold block truncate">{cat.tipo_gasto}</span>
@@ -459,7 +520,7 @@ export const HogarPage: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition self-start md:self-auto"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ Nueva Regla</span>
+            <span>Nueva Regla</span>
           </button>
         </div>
 
@@ -488,7 +549,7 @@ export const HogarPage: React.FC = () => {
               <option value="ALL">Todas las Categorías</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  🏷️ {c.nombre}
+                  {c.nombre}
                 </option>
               ))}
             </select>
@@ -545,15 +606,10 @@ export const HogarPage: React.FC = () => {
                     <td className="p-3 font-mono text-emerald-400 font-semibold">"{m.patron}"</td>
                     <td className="p-3">
                       <div className="flex items-center gap-2">
-                        <span
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
-                          style={{
-                            backgroundColor: `${m.category?.color || '#16a34a'}20`,
-                            color: m.category?.color || '#16a34a',
-                          }}
-                        >
-                          {m.category?.icono || '🏷️'}
-                        </span>
+                        <div
+                          className="w-3.5 h-3.5 rounded-md flex-shrink-0 border border-slate-700 shadow-sm"
+                          style={{ backgroundColor: m.category?.color || '#16a34a' }}
+                        />
                         <span className="font-bold text-white">{m.category?.nombre || 'Categoría no asignada'}</span>
                       </div>
                     </td>
@@ -728,25 +784,21 @@ export const HogarPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Icono / Emoji</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. 🛒, 🏋️, 💊"
-                    value={catIcono}
-                    onChange={(e) => setCatIcono(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Color (Hex)</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Color Identificador</label>
+                <div className="flex items-center gap-3">
                   <input
                     type="color"
                     value={catColor}
                     onChange={(e) => setCatColor(e.target.value)}
-                    className="w-full h-9 p-1 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer"
+                    className="w-12 h-9 p-1 bg-slate-950 border border-slate-800 rounded-xl cursor-pointer flex-shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={catColor}
+                    onChange={(e) => setCatColor(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white"
+                    placeholder="#16a34a"
                   />
                 </div>
               </div>
@@ -830,7 +882,7 @@ export const HogarPage: React.FC = () => {
                   <option value="">-- Seleccionar Categoría --</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      🏷️ {c.nombre} ({c.tipo_gasto})
+                      {c.nombre} ({c.tipo_gasto})
                     </option>
                   ))}
                 </select>

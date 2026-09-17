@@ -35,9 +35,11 @@ export const Navbar: React.FC = () => {
     <>
       <header className="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-4 md:px-6 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center font-bold text-emerald-400">
-            myp
-          </div>
+          <img
+            src="/logo-myp-v1.png"
+            alt="myp-apps logo"
+            className="w-9 h-9 object-contain rounded-xl shadow-sm border border-emerald-500/20"
+          />
           <div>
             <h1 className="text-sm font-semibold text-white tracking-wide">
               {household?.nombre || 'myp-apps'}

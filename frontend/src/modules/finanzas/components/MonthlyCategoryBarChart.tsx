@@ -23,8 +23,8 @@ const CATEGORY_COLORS = [
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 export const MonthlyCategoryBarChart: React.FC<Props> = ({ transactions }) => {
-  const [monthsCount, setMonthsCount] = useState<3 | 6 | 12>(6);
-  const [chartType, setChartType] = useState<'stacked' | 'grouped'>('stacked');
+  const [monthsCount, setMonthsCount] = useState<3 | 6 | 12>(3);
+  const [chartType, setChartType] = useState<'stacked' | 'grouped'>('grouped');
 
   // Extract & sort category names from highest to lowest total expense
   const categoryNames = useMemo(() => {
