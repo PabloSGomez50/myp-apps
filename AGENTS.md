@@ -19,18 +19,18 @@ myp-apps/
 │   │   ├── core/             # Configuración, DB session, seguridad (bcrypt + JWT)
 │   │   ├── modules/
 │   │   │   ├── core/         # users, households, household_members (schema: core)
-│   │   │   ├── finanzas/     # accounts, categories, budgets, transactions, shopping, brokers (schema: finanzas)
+│   │   │   ├── finanzas/     # accounts, categories, category_mappings, budgets, transactions, shopping, brokers (schema: finanzas)
 │   │   │   └── inventario/   # stock, items, ubicaciones (schema: inventario)
 │   │   ├── shared/           # Base declarative models, exceptions
 │   │   └── main.py           # FastAPI entry point con montaje de routers
 │   ├── migrations/           # Migraciones Alembic multi-esquema
-│   └── tests/                # Tests automatizados Pytest
+│   └── tests/                # Tests automatizados Pytest (100% pasando)
 ├── frontend/                 # React 18 + Vite + Tailwind SPA / PWA (pnpm)
 │   ├── src/
 │   │   ├── components/       # Layouts (Navbar con switch rápido por PIN, Sidebar, BottomNav)
 │   │   ├── context/          # AuthContext (login, switch de perfil)
 │   │   ├── modules/          # Vistas de core, finanzas e inventario
-│   │   ├── services/         # Cliente Axios
+│   │   ├── services/         # Cliente Axios fuertemente tipado
 │   │   └── types/            # Tipos TypeScript
 │   └── nginx.conf            # Configuración Nginx Alpine
 ├── docs/                     # Documentación, especificaciones y ADRs
@@ -48,10 +48,11 @@ myp-apps/
 3. **Calidad de Código:** Mantener `ruff` en backend con 0 errores y TypeScript estricto en frontend. Toda nueva funcionalidad de backend debe incluir sus tests con `pytest`.
 4. **Dominio Financiero (50/50):** 
    - Cuentas 100% personales (sin cuentas conjuntas bancarias).
-   - Gastos compartidos divididos 50/50 con balance Splitwise continuo y soporte de liquidaciones (`SETTLEMENT`).
+   - Gastos compartidos divididos 50/50 con balance Splitwise continuo e imputación al 50% en vista individual.
+   - Soporte de liquidaciones (`SETTLEMENT`) con auto-selección de emisor/destinatario para hogares de 2 miembros.
    - Categorización ortogonal (`FIXED_HOUSEHOLD`, `VARIABLE_HOUSEHOLD`, `LEISURE_COUPLE`, `FIXED_PERSONAL`, `VARIABLE_PERSONAL`).
    - Lista de compras con descuentos jerárquicos y checkout directo a transacción 50/50.
-5. **Autenticación:** JWT con soporte de switch rápido por PIN de 4 dígitos para compartir dispositivos en casa.
+5. **Autenticación & Identidad:** JWT con soporte de switch rápido por PIN de 4 dígitos y avatares con iniciales ("P", "M") y color configurable por usuario en `HogarPage`.
 
 ## 🔄 Workflows & Comandos Frecuentes
 - **Backend Tests:** `cd backend && uv run pytest -v`
@@ -62,12 +63,19 @@ myp-apps/
 - **Docker Stack:** `docker compose up -d --build`
 - **Docker Logs:** `docker compose logs -f [servicio]`
 
-## 🎯 Current Objectives & Achievements (Fase 3 & 4)
+## 🎯 Current Objectives & Achievements (Fase 3, 4 & Enhancements)
 - **Frontend SPA Integration:** Interfaz modular React 18 + Vite conectada 100% con FastAPI endpoints via React Query.
-- **Navegación & Layout:** Sidebar colapsable con persistencia en `localStorage` y posicionamiento `sticky top-16` para scroll fluido.
+- **Navegación & Layout:** Sidebar colapsable con persistencia en `localStorage`, posicionamiento `sticky top-16` y ancho responsivo expandido (`max-w-[1750px]`) optimizado para monitores 1920x1080.
 - **Centro de Movimientos & CSV:** Tabla de movimientos con filtros por fecha/categoría/usuario, paginación, importador CSV y borrado masivo por filtros (`POST /transactions/bulk-delete`).
 - **Resumen & Balance Dashboard:**
+  - Selector de vista dual: **Hogar Completo** (grid 3 cols) vs **Solo [Integrante]** (grid 4 cols con card inline de Reintegros / Devoluciones `Pagado - Ingresado` e imputación 50/50).
   - Desglose porcentual de gastos por categoría mediante `recharts` (Pie/Donut Chart con selector de período).
-  - Evolución histórica mensual apilada (Stacked Bar Chart con selector de 3, 6 o 12 meses).
+  - Evolución mensual de gastos en ARS ordenada por volumen de gasto con toggle en tiempo real entre **Barras Apiladas (Stacked)** y **Barras Agrupadas (Grouped)**.
   - Modal `NewIncomeModal.tsx` para registrar sueldos/ingresos por integrante.
-  - Métricas dinámicas en tiempo real: *Flujo Libre del Mes* (`Total Ingresos - Total Gastos`) y *Gastos Compartidos*.
+  - Modal `NewTransactionModal.tsx` mejorado: categorías en fila 1, sugerencias de automapeo cliqueables y selector de integrante por avatar.
+  - Modal `SettlementModal.tsx` optimizado: auto-selección de emisor/destinatario en convivencias de 2 miembros y layout reordenado (Monto -> Fecha/Concepto -> Emisor/Destinatario).
+- **Gestión del Hogar & Reglas (`HogarPage.tsx`):**
+  - **Configurador de Avatares:** Color de avatar configurable por usuario (`PUT /api/v1/core/users/{id}`) exhibiendo la inicial ("P", "M") de cada integrante.
+  - **CRUD de Categorías:** Creación, edición y eliminación suave con vista de bloque de color identificador (reemplazando emojis).
+  - **Tipos de Gastos:** Exposición interactiva de los 5 tipos de gastos del sistema con distintivo `🔒 Reglas de Sistema Fijas`.
+  - **Reglas de Automapeo:** Tabla avanzada con CRUD completo (`GET`, `POST`, `PUT`, `DELETE /category-mappings/{id}`), buscador por palabra clave, filtros por categoría y tipo de gasto, y ordenamiento dinámico.

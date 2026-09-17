@@ -16,38 +16,40 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 ## ✅ Fase 2: Backend Core & Finanzas (COMPLETADO)
 - [x] Modelos relacionales PostgreSQL en esquema `core` (`User`, `Household`, `HouseholdMember`).
 - [x] Autenticación JWT con hashing `bcrypt` y conmutación ágil por PIN de 4 dígitos.
-- [x] Modelos relacionales PostgreSQL en esquema `finanzas` (`Account`, `Category`, `Budget`, `Transaction`, `ShoppingList`, `ShoppingItem`, `SavingsGoal`, `GoalContribution`, `Broker`, `BrokerTransaction`).
+- [x] Modelos relacionales PostgreSQL en esquema `finanzas` (`Account`, `Category`, `CategoryMapping`, `Budget`, `Transaction`, `ShoppingList`, `SavingsGoal`, `Broker`).
 - [x] Categorización ortogonal (`FIXED_HOUSEHOLD`, `VARIABLE_HOUSEHOLD`, `LEISURE_COUPLE`, `FIXED_PERSONAL`, `VARIABLE_PERSONAL`).
 - [x] Lógica de Balance Continuo Splitwise (50/50) y liquidaciones parciales/totales (`SETTLEMENT`).
-- [x] Lista de compras con descuentos jerárquicos y checkout automático hacia transacción 50/50.
+- [x] Endpoints CRUD para Reglas de Automapeo (`CategoryMapping`) con soporte `PUT` y `DELETE`.
 - [x] Calculadora de Fondo de Emergencia y estimación de gastos fijos.
-- [x] Migración inicial de Alembic ([0001_initial_core_and_finanzas.py](backend/migrations/versions/0001_initial_core_and_finanzas.py)).
-- [x] Suite de pruebas automatizadas con Pytest (100% pasando, 6 tests).
+- [x] Suite de pruebas automatizadas con Pytest (100% pasando, 10 tests).
 
 ---
 
-## ✅ Fase 3: Integración Frontend y Formularios Interactivos (COMPLETADO)
+## ✅ Fase 3: Integración Frontend, Resumen & Balance (COMPLETADO)
 - [x] Configuración de `@tanstack/react-query` v5 para gestión de estado de servidor y caché en la SPA React.
-- [x] Cliente HTTP Axios fuertemente tipado en `src/services/api.ts` para `/api/v1/auth/*` y `/api/v1/finanzas/*`.
-- [x] Autenticación y cambio rápido de perfil por PIN de 4 dígitos integrado en `AuthContext.tsx`.
-- [x] Dashboard de finanzas con visualización en tiempo real del balance continuo de pareja (`CoupleNetBalance`).
-- [x] Modal interactivo `NewTransactionModal` para registrar gastos individuales y compartidos 50/50.
-- [x] Modal interactivo `SettlementModal` para transferencia de liquidaciones de deuda.
-- [x] Lista de compras interactiva en `ShoppingListPage.tsx` con descuentos jerárquicos, modales de ítems, sugerencia por stock bajo y checkout hacia transacción 50/50.
+- [x] Dashboard de Finanzas con selector de vista **Hogar Completo** (3 cols) vs **Vista Individual** (4 cols con 50/50 shared imputation e inline Reintegros `Pagado - Ingresado`).
+- [x] Gráfico de evolución mensual por categoría con ordenamiento por volumen y toggle en tiempo real entre **Barras Apiladas (Stacked)** y **Barras Agrupadas (Grouped)**.
+- [x] Modal `NewIncomeModal.tsx` para registrar sueldos e ingresos por integrante.
+- [x] Modal `NewTransactionModal.tsx` mejorado con categorías en la primera posición, chips de sugerencias de automapeo y selector de usuarios por avatar.
+- [x] Modal `SettlementModal.tsx` optimizado con auto-selección de emisor/destinatario en convivencias de 2 miembros.
+- [x] Centro de Movimientos con paginación, filtros avanzados y borrado masivo (`POST /transactions/bulk-delete`).
 
 ---
 
-## ✅ Fase 4: Módulo de Inventario (`inventario`) (COMPLETADO)
+## ✅ Fase 4: Módulo de Inventario & Gestión del Hogar (COMPLETADO)
 - [x] Modelado del esquema PostgreSQL `inventario` (`locations`, `categories`, `items`, `stock_logs`).
-- [x] Migración de Alembic `0002_inventario_schema.py` para la estructura de tablas del módulo.
-- [x] Endpoints RESTful para control de stock, ubicaciones físicas y filtro de stock bajo (`/api/v1/inventario/*`).
-- [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtro por ubicación, insignias de estado y botones rápidos de ajuste `[+]` y `[-]`.
-- [x] Vinculación interactiva con la lista de compras: botón *"Sugerir por Stock Bajo"* en `ShoppingListPage.tsx` importando productos desde la BD en tiempo real.
-- [x] Suite de pruebas automatizadas con Pytest (`tests/test_inventario.py`) pasando al 100%.
+- [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtros y ajuste rápido de stock.
+- [x] Vinculación con lista de compras mediante *"Sugerir por Stock Bajo"*.
+- [x] **Gestión del Hogar (`HogarPage.tsx`)**:
+  - Configurador de color de avatar por usuario con iniciales ("P", "M").
+  - CRUD completo de Categorías con bloques de color identificadores (removiendo emojis).
+  - Sección interactiva de Tipos de Gastos con distintivo `🔒 Reglas de Sistema Fijas`.
+  - Gestor avanzado de Reglas de Automapeo con buscador por palabra clave, filtros por categoría/tipo y ordenamiento.
+  - Ancho de contenedor extendido (`max-w-[1750px]`) optimizado para monitores 1920x1080.
 
 ---
 
-## 🚀 Fase 5: Despliegue en Raspberry Pi 5 y Producción
+## 🔮 Fase 5: Inversiones, Ahorros & Despliegue en Raspberry Pi 5
+- [ ] Vista enriquecida de Inversiones y Ahorros (Metas de ahorro, FCI, Cedears, Crypto).
 - [ ] Configuración final en Raspberry Pi 5 con Nginx Proxy Manager y certificados SSL.
-- [ ] Automatización de backup de base de datos PostgreSQL.
-- [ ] Monitoreo de memoria RAM y rendimiento.
+- [ ] Monitoreo de memoria RAM y backup automático de base de datos.
