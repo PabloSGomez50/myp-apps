@@ -100,4 +100,3 @@ async def test_update_user_color(client: AsyncClient):
     )
     assert update_res.status_code == 200, update_res.text
     assert update_res.json()["color_avatar"] == "#8b5cf6"
-

@@ -236,6 +236,7 @@ async def test_investment_assets_crud(client: AsyncClient):
     assert len(list_res.json()) >= 1
 
     # 4. Delete Asset
-    del_res = await client.delete(f"/api/v1/finanzas/investments/assets/{asset_id}", headers=headers)
+    del_res = await client.delete(
+        f"/api/v1/finanzas/investments/assets/{asset_id}", headers=headers
+    )
     assert del_res.status_code == 204
-

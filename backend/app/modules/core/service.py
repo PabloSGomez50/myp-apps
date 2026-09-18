@@ -13,7 +13,14 @@ from app.core.security import (
     verify_pin,
 )
 from app.modules.core.models import CurrencyEnum, Household, HouseholdMember, RoleEnum, User
-from app.modules.core.schemas import PinSwitchRequest, TokenResponse, UserCreate, UserLogin, UserOut, UserUpdate
+from app.modules.core.schemas import (
+    PinSwitchRequest,
+    TokenResponse,
+    UserCreate,
+    UserLogin,
+    UserOut,
+    UserUpdate,
+)
 
 
 class CoreService:
@@ -295,4 +302,3 @@ class CoreService:
         await db.commit()
         await db.refresh(user)
         return user
-

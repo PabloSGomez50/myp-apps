@@ -45,7 +45,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="inventario",
     )
-    op.create_index("ix_inventario_locations_household_id", "locations", ["household_id"], schema="inventario")
+    op.create_index(
+        "ix_inventario_locations_household_id", "locations", ["household_id"], schema="inventario"
+    )
 
     # Inventory Categories Table
     op.create_table(
@@ -65,7 +67,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="inventario",
     )
-    op.create_index("ix_inventario_categories_household_id", "categories", ["household_id"], schema="inventario")
+    op.create_index(
+        "ix_inventario_categories_household_id", "categories", ["household_id"], schema="inventario"
+    )
 
     # Inventory Items Table
     op.create_table(
@@ -75,8 +79,12 @@ def upgrade() -> None:
         sa.Column("location_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("category_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("nombre", sa.String(length=150), nullable=False),
-        sa.Column("stock_actual", sa.Numeric(precision=10, scale=2), nullable=False, server_default="1.00"),
-        sa.Column("stock_minimo", sa.Numeric(precision=10, scale=2), nullable=False, server_default="1.00"),
+        sa.Column(
+            "stock_actual", sa.Numeric(precision=10, scale=2), nullable=False, server_default="1.00"
+        ),
+        sa.Column(
+            "stock_minimo", sa.Numeric(precision=10, scale=2), nullable=False, server_default="1.00"
+        ),
         sa.Column("unidad_medida", sa.String(length=30), nullable=False, server_default="unidades"),
         sa.Column("fecha_vencimiento", sa.Date(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -99,9 +107,15 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="inventario",
     )
-    op.create_index("ix_inventario_items_household_id", "items", ["household_id"], schema="inventario")
-    op.create_index("ix_inventario_items_location_id", "items", ["location_id"], schema="inventario")
-    op.create_index("ix_inventario_items_category_id", "items", ["category_id"], schema="inventario")
+    op.create_index(
+        "ix_inventario_items_household_id", "items", ["household_id"], schema="inventario"
+    )
+    op.create_index(
+        "ix_inventario_items_location_id", "items", ["location_id"], schema="inventario"
+    )
+    op.create_index(
+        "ix_inventario_items_category_id", "items", ["category_id"], schema="inventario"
+    )
 
     # Stock Logs Table
     op.create_table(
@@ -111,7 +125,14 @@ def upgrade() -> None:
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(
             "tipo_movimiento",
-            postgresql.ENUM("CONSUMPTION", "REPLENISHMENT", "ADJUSTMENT", name="movement_type_enum", schema="inventario", create_type=False),
+            postgresql.ENUM(
+                "CONSUMPTION",
+                "REPLENISHMENT",
+                "ADJUSTMENT",
+                name="movement_type_enum",
+                schema="inventario",
+                create_type=False,
+            ),
             nullable=False,
         ),
         sa.Column("cantidad_cambio", sa.Numeric(precision=10, scale=2), nullable=False),
@@ -132,7 +153,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         schema="inventario",
     )
-    op.create_index("ix_inventario_stock_logs_item_id", "stock_logs", ["item_id"], schema="inventario")
+    op.create_index(
+        "ix_inventario_stock_logs_item_id", "stock_logs", ["item_id"], schema="inventario"
+    )
 
 
 def downgrade() -> None:

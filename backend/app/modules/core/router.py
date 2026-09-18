@@ -64,7 +64,9 @@ async def get_household(
     return await CoreService.get_household_details(db, household_id)
 
 
-@core_router.post("/household/members", response_model=HouseholdOut, status_code=status.HTTP_201_CREATED)
+@core_router.post(
+    "/household/members", response_model=HouseholdOut, status_code=status.HTTP_201_CREATED
+)
 async def add_household_member(
     data: AddMemberRequest,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -87,4 +89,3 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
 ):
     return await CoreService.update_user(db, id, data)
-

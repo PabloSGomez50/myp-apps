@@ -57,7 +57,9 @@ def upgrade() -> None:
 
     # 2. Add broker_id column to finanzas.goal_contributions if not exists
     if inspector.has_table("goal_contributions", schema="finanzas"):
-        columns = [c["name"] for c in inspector.get_columns("goal_contributions", schema="finanzas")]
+        columns = [
+            c["name"] for c in inspector.get_columns("goal_contributions", schema="finanzas")
+        ]
         if "broker_id" not in columns:
             op.add_column(
                 "goal_contributions",
@@ -88,7 +90,12 @@ def upgrade() -> None:
             sa.Column("cantidad", sa.Numeric(18, 8), server_default="0.00", nullable=False),
             sa.Column("precio_compra", sa.Numeric(14, 2), server_default="0.00", nullable=False),
             sa.Column("precio_actual", sa.Numeric(14, 2), server_default="0.00", nullable=False),
-            sa.Column("rentabilidad_esperada_anual", sa.Numeric(7, 2), server_default="0.00", nullable=False),
+            sa.Column(
+                "rentabilidad_esperada_anual",
+                sa.Numeric(7, 2),
+                server_default="0.00",
+                nullable=False,
+            ),
             sa.Column("moneda", sa.String(length=10), server_default="ARS", nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -121,9 +128,16 @@ def downgrade() -> None:
         op.drop_table("investment_assets", schema="finanzas")
 
     if inspector.has_table("goal_contributions", schema="finanzas"):
-        columns = [c["name"] for c in inspector.get_columns("goal_contributions", schema="finanzas")]
+        columns = [
+            c["name"] for c in inspector.get_columns("goal_contributions", schema="finanzas")
+        ]
         if "broker_id" in columns:
-            op.drop_constraint("fk_goal_contributions_broker_id", "goal_contributions", schema="finanzas", type_="foreignkey")
+            op.drop_constraint(
+                "fk_goal_contributions_broker_id",
+                "goal_contributions",
+                schema="finanzas",
+                type_="foreignkey",
+            )
             op.drop_column("goal_contributions", "broker_id", schema="finanzas")
 
     if inspector.has_table("currency_quotes", schema="finanzas"):

@@ -17,7 +17,6 @@ from app.modules.inventario.schemas import (
     InventoryCategoryCreate,
     InventoryItemCreate,
     InventoryItemOut,
-    InventoryItemUpdate,
     LocationCreate,
     StockAdjustRequest,
 )
@@ -48,9 +47,7 @@ class InventarioService:
         return location
 
     @staticmethod
-    async def get_categories(
-        db: AsyncSession, household_id: uuid.UUID
-    ) -> list[InventoryCategory]:
+    async def get_categories(db: AsyncSession, household_id: uuid.UUID) -> list[InventoryCategory]:
         result = await db.execute(
             select(InventoryCategory)
             .where(InventoryCategory.household_id == household_id)

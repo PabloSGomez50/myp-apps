@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -198,9 +198,7 @@ async def update_transaction(
     return TransactionOut.model_validate(tx)
 
 
-@finanzas_router.post(
-    "/transactions/bulk-delete", status_code=status.HTTP_200_OK
-)
+@finanzas_router.post("/transactions/bulk-delete", status_code=status.HTTP_200_OK)
 async def delete_bulk_transactions(
     data: TransactionBulkDelete,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -208,225 +206,24 @@ async def delete_bulk_transactions(
 ):
     _, household_id = current_auth
     if not household_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado."
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado.")
     count = await FinanzasService.delete_bulk_transactions(db, household_id, data)
     return {"deleted_count": count}
 
 
-@finanzas_router.delete(
-    "/transactions/all", status_code=status.HTTP_204_NO_CONTENT
-)
+@finanzas_router.delete("/transactions/all", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_all_transactions(
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
     db: AsyncSession = Depends(get_db),
 ):
     _, household_id = current_auth
     if not household_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado."
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado.")
     await FinanzasService.delete_all_transactions(db, household_id)
     return None
 
 
-@finanzas_router.delete(
-    "/transactions/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_transaction(
-    id: uuid.UUID,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    await FinanzasService.delete_transaction(db, id, household_id)
-    return None
-
-
-@finanzas_router.post(
-    "/transactions/split", response_model=TransactionOut, status_code=status.HTTP_201_CREATED
-)
-async def create_split_transaction(
-    data: TransactionSplitCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    user, household_id = current_auth
-    tx = await FinanzasService.create_split_transaction(db, user.id, household_id, data)
-    return TransactionOut.model_validate(tx)
-
-
-@finanzas_router.post(
-    "/transactions/settlement", response_model=TransactionOut, status_code=status.HTTP_201_CREATED
-)
-async def create_settlement(
-    data: SettlementCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    user, household_id = current_auth
-    tx = await FinanzasService.create_settlement(db, user.id, household_id, data)
-    return TransactionOut.model_validate(tx)
-
-
-@finanzas_router.get(
-    "/balance/couple-net", response_model=CoupleBalanceOut, status_code=status.HTTP_200_OK
-)
-async def get_couple_balance(
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    user, household_id = current_auth
-    return await FinanzasService.get_couple_net_balance(db, user.id, household_id)
-
-
-# ==============================================================================
-# Shopping Lists & Discounts
-# ==============================================================================
-@finanzas_router.post(
-    "/shopping/lists", response_model=ShoppingListOut, status_code=status.HTTP_201_CREATED
-)
-async def create_shopping_list(
-    data: ShoppingListCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    shopping_list = await FinanzasService.create_shopping_list(db, household_id, data)
-    return await FinanzasService.get_shopping_list_details(db, shopping_list.id)
-
-
-@finanzas_router.get(
-    "/shopping/lists/{id}", response_model=ShoppingListOut, status_code=status.HTTP_200_OK
-)
-async def get_shopping_list(
-    id: uuid.UUID,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    return await FinanzasService.get_shopping_list_details(db, id)
-
-
-@finanzas_router.post(
-    "/shopping/lists/{id}/items",
-    response_model=ShoppingItemOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def add_shopping_item(
-    id: uuid.UUID,
-    data: ShoppingItemCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    item = await FinanzasService.add_shopping_item(db, id, data)
-    list_details = await FinanzasService.get_shopping_list_details(db, id)
-    item_out = next((it for it in list_details.items if it.id == item.id), None)
-    return item_out
-
-
-@finanzas_router.post(
-    "/shopping/lists/{id}/checkout", response_model=TransactionOut, status_code=status.HTTP_200_OK
-)
-async def checkout_shopping_list(
-    id: uuid.UUID,
-    data: ShoppingCheckoutRequest,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    user, household_id = current_auth
-    return await FinanzasService.checkout_shopping_list(db, user.id, household_id, id, data)
-
-
-# ==============================================================================
-# Savings & Emergency Fund
-# ==============================================================================
-@finanzas_router.get(
-    "/savings/goals", response_model=list[SavingsGoalOut], status_code=status.HTTP_200_OK
-)
-async def get_savings_goals(
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    return await FinanzasService.get_savings_goals(db, household_id)
-
-
-@finanzas_router.post(
-    "/savings/goals", response_model=SavingsGoalOut, status_code=status.HTTP_201_CREATED
-)
-async def create_savings_goal(
-    data: SavingsGoalCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    goal = await FinanzasService.create_savings_goal(db, household_id, data)
-    return SavingsGoalOut.model_validate(goal)
-
-
-@finanzas_router.post(
-    "/savings/goals/{id}/contribute", response_model=SavingsGoalOut, status_code=status.HTTP_200_OK
-)
-async def contribute_to_goal(
-    id: uuid.UUID,
-    data: GoalContributionCreate,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    user, _ = current_auth
-    goal = await FinanzasService.contribute_to_goal(db, user.id, id, data)
-    return SavingsGoalOut.model_validate(goal)
-
-
-@finanzas_router.get(
-    "/savings/emergency-fund-calculator",
-    response_model=EmergencyFundCalculationOut,
-    status_code=status.HTTP_200_OK,
-)
-async def get_emergency_fund_calculation(
-    meses_cobertura: int = Query(3, ge=1, le=24),
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    return await FinanzasService.calculate_emergency_fund(db, household_id, meses_cobertura)
-@finanzas_router.post(
-    "/transactions/bulk-delete", status_code=status.HTTP_200_OK
-)
-async def delete_bulk_transactions(
-    data: TransactionBulkDelete,
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    if not household_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado."
-        )
-    count = await FinanzasService.delete_bulk_transactions(db, household_id, data)
-    return {"deleted_count": count}
-
-
-@finanzas_router.delete(
-    "/transactions/all", status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_all_transactions(
-    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
-    db: AsyncSession = Depends(get_db),
-):
-    _, household_id = current_auth
-    if not household_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Sin hogar asociado."
-        )
-    await FinanzasService.delete_all_transactions(db, household_id)
-    return None
-
-
-@finanzas_router.delete(
-    "/transactions/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@finanzas_router.delete("/transactions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_transaction(
     id: uuid.UUID,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -571,9 +368,7 @@ async def update_savings_goal(
     return await FinanzasService.update_savings_goal(db, id, household_id, data)
 
 
-@finanzas_router.delete(
-    "/savings/goals/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@finanzas_router.delete("/savings/goals/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_savings_goal(
     id: uuid.UUID,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -669,9 +464,7 @@ async def get_currency_quotes(
     return await FinanzasService.get_currency_quotes(db, household_id, moneda_origen)
 
 
-@finanzas_router.get(
-    "/currency-quotes/latest", status_code=status.HTTP_200_OK
-)
+@finanzas_router.get("/currency-quotes/latest", status_code=status.HTTP_200_OK)
 async def get_latest_currency_quotes(
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
     db: AsyncSession = Depends(get_db),
@@ -755,9 +548,7 @@ async def parse_csv(
     return await FinanzasService.parse_csv_content(db, household_id, text)
 
 
-@finanzas_router.post(
-    "/transactions/bulk-import", status_code=status.HTTP_201_CREATED
-)
+@finanzas_router.post("/transactions/bulk-import", status_code=status.HTTP_201_CREATED)
 async def bulk_import(
     data: BulkImportRequest,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),

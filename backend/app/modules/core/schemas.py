@@ -42,7 +42,6 @@ class UserUpdate(BaseModel):
     color_avatar: str | None = Field(default=None, max_length=30)
 
 
-
 class HouseholdBase(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=150)
     moneda_principal: CurrencyEnum = CurrencyEnum.ARS

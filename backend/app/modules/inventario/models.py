@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -79,7 +79,9 @@ class InventoryItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     fecha_vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     location: Mapped["Location | None"] = relationship("Location", lazy="selectin")
-    category: Mapped["InventoryCategory | None"] = relationship("InventoryCategory", lazy="selectin")
+    category: Mapped["InventoryCategory | None"] = relationship(
+        "InventoryCategory", lazy="selectin"
+    )
 
 
 class StockLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):

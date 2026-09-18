@@ -385,12 +385,18 @@ class InvestmentAsset(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)
-    cantidad: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=Decimal("0.00"), nullable=False)
-    precio_compra: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), nullable=False)
-    precio_actual: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), nullable=False)
-    rentabilidad_esperada_anual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0.00"), nullable=False)
+    cantidad: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8), default=Decimal("0.00"), nullable=False
+    )
+    precio_compra: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0.00"), nullable=False
+    )
+    precio_actual: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0.00"), nullable=False
+    )
+    rentabilidad_esperada_anual: Mapped[Decimal] = mapped_column(
+        Numeric(7, 2), default=Decimal("0.00"), nullable=False
+    )
     moneda: Mapped[str] = mapped_column(String(10), default="ARS", nullable=False)
 
     broker: Mapped["Broker | None"] = relationship("Broker")
-
-

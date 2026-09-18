@@ -5,11 +5,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.database import get_db
-from app.main import app as fastapi_app
 import app.modules.core.models  # noqa: F401
 import app.modules.finanzas.models  # noqa: F401
 import app.modules.inventario.models  # noqa: F401
+from app.core.database import get_db
+from app.main import app as fastapi_app
 from app.shared.base_model import Base
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"

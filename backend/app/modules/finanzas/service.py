@@ -1,7 +1,7 @@
 import csv
 import io
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -45,7 +45,6 @@ from app.modules.finanzas.schemas import (
     CsvParseResponse,
     CsvPreviewRow,
     CurrencyQuoteCreate,
-    CurrencyQuoteOut,
     EmergencyFundCalculationOut,
     GoalContributionCreate,
     GoalContributionOut,
@@ -60,12 +59,11 @@ from app.modules.finanzas.schemas import (
     ShoppingItemOut,
     ShoppingListCreate,
     ShoppingListOut,
-    TransactionCreate,
-    TransactionBase,
     TransactionBulkDelete,
+    TransactionCreate,
     TransactionOut,
-    TransactionUpdate,
     TransactionSplitCreate,
+    TransactionUpdate,
 )
 
 
@@ -186,7 +184,6 @@ class FinanzasService:
         await db.commit()
         return True
 
-
     @staticmethod
     async def create_budget(
         db: AsyncSession, household_id: uuid.UUID, data: BudgetCreate
@@ -305,7 +302,9 @@ class FinanzasService:
             descripcion=data.descripcion,
             fecha=data.fecha,
         )
-        return await FinanzasService.create_transaction(db, payer_user_id, household_id, create_data)
+        return await FinanzasService.create_transaction(
+            db, payer_user_id, household_id, create_data
+        )
 
     @staticmethod
     async def create_settlement(
@@ -422,12 +421,8 @@ class FinanzasService:
         return True
 
     @staticmethod
-    async def delete_all_transactions(
-        db: AsyncSession, household_id: uuid.UUID
-    ) -> int:
-        res = await db.execute(
-            delete(Transaction).where(Transaction.household_id == household_id)
-        )
+    async def delete_all_transactions(db: AsyncSession, household_id: uuid.UUID) -> int:
+        res = await db.execute(delete(Transaction).where(Transaction.household_id == household_id))
         await db.commit()
         return res.rowcount
 
@@ -702,9 +697,7 @@ class FinanzasService:
     ) -> SavingsGoalOut:
         goal = await db.get(SavingsGoal, goal_id)
         if not goal or goal.household_id != household_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada.")
 
         if data.nombre is not None:
             goal.nombre = data.nombre.strip()
@@ -791,9 +784,7 @@ class FinanzasService:
     ) -> SavingsGoalOut:
         goal = await db.get(SavingsGoal, goal_id)
         if not goal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada.")
 
         if data.account_id:
             account = await db.get(Account, data.account_id)
@@ -1099,7 +1090,6 @@ class FinanzasService:
         await db.commit()
         return True
 
-
     @staticmethod
     async def parse_csv_content(
         db: AsyncSession, household_id: uuid.UUID, content: str
@@ -1131,7 +1121,6 @@ class FinanzasService:
         )
         categories = list(categories_res.scalars().all())
         categories_by_type = {c.tipo_gasto: c for c in categories}
-        categories_by_name = {c.nombre.strip().lower(): c for c in categories}
 
         # Keyword rules for fallback category matching
         keyword_type_map = {
@@ -1158,7 +1147,7 @@ class FinanzasService:
         }
 
         reader = csv.reader(io.StringIO(content))
-        header = next(reader, None)
+        _ = next(reader, None)
 
         rows: list[CsvPreviewRow] = []
         unmatched_users_count = 0
@@ -1174,7 +1163,9 @@ class FinanzasService:
             quien_pago_raw = row[3].strip() if len(row) > 3 else ""
 
             # Parse amount (handling Argentine comma decimals "151312,32")
-            monto_clean = monto_str.replace('"', "").replace(" ", "").replace(".", "").replace(",", ".")
+            monto_clean = (
+                monto_str.replace('"', "").replace(" ", "").replace(".", "").replace(",", ".")
+            )
             try:
                 monto_val = float(monto_clean)
             except ValueError:
@@ -1384,5 +1375,3 @@ class FinanzasService:
         await db.commit()
         await db.refresh(asset)
         return asset
-
-

@@ -27,8 +27,8 @@ app = FastAPI(
     description="Modular Monolith Backend for Household Management, Finances & Inventory",
     version="0.1.0",
     lifespan=lifespan,
-    docs_url="/api/docs",         # Mueve la interfaz de Swagger UI
-    openapi_url="/api/openapi.json" # Mueve el esquema JSON necesario para la UI
+    docs_url="/api/docs",  # Mueve la interfaz de Swagger UI
+    openapi_url="/api/openapi.json",  # Mueve el esquema JSON necesario para la UI
 )
 
 # CORS Middleware
@@ -63,7 +63,22 @@ async def root():
     """Root endpoint with suite metadata."""
     return {
         "message": "Welcome to myp-apps API Suite",
-        "docs_url": "/docs",
+        "docs_url": "/api/docs",
+        "modules": {
+            "auth": "/api/v1/auth",
+            "core": "/api/v1/core",
+            "finanzas": "/api/v1/finanzas",
+            "inventario": "/api/v1/inventario",
+        },
+    }
+
+
+@app.get("/api", status_code=status.HTTP_200_OK, tags=["API Root"])
+async def api_root():
+    """Root endpoint with suite metadata."""
+    return {
+        "message": "Welcome to myp-apps API Suite",
+        "docs_url": "/api/docs",
         "modules": {
             "auth": "/api/v1/auth",
             "core": "/api/v1/core",

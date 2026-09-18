@@ -297,7 +297,9 @@ class SavingsGoalOut(SavingsGoalBase):
     contributions: list[GoalContributionOut] = []
     created_at: datetime
 
-    @field_serializer("monto_objetivo", "monto_acumulado", "porcentaje_avance", mode="plain", check_fields=False)
+    @field_serializer(
+        "monto_objetivo", "monto_acumulado", "porcentaje_avance", mode="plain", check_fields=False
+    )
     def serialize_decimal(self, v: Decimal) -> float:
         return float(v) if v is not None else 0.0
 
@@ -310,7 +312,14 @@ class EmergencyFundCalculationOut(BaseModel):
     porcentaje_cobertura_actual: Decimal
     meses_cubiertos_reales: Decimal
 
-    @field_serializer("gasto_fijo_promedio_mensual", "meta_sugerida", "ahorro_actual_emergencia", "porcentaje_cobertura_actual", "meses_cubiertos_reales", mode="plain")
+    @field_serializer(
+        "gasto_fijo_promedio_mensual",
+        "meta_sugerida",
+        "ahorro_actual_emergencia",
+        "porcentaje_cobertura_actual",
+        "meses_cubiertos_reales",
+        mode="plain",
+    )
     def serialize_decimal(self, v: Decimal) -> float:
         return float(v) if v is not None else 0.0
 
@@ -363,7 +372,9 @@ class BrokerOut(BrokerBase):
     is_active: bool
     created_at: datetime
 
-    @field_serializer("saldo_total_ars", "saldo_total_usd", "saldo_total_crypto", mode="plain", check_fields=False)
+    @field_serializer(
+        "saldo_total_ars", "saldo_total_usd", "saldo_total_crypto", mode="plain", check_fields=False
+    )
     def serialize_decimal(self, v: Decimal) -> float:
         return float(v) if v is not None else 0.0
 
@@ -418,7 +429,6 @@ class CategoryMappingCreate(BaseModel):
 class CategoryMappingUpdate(BaseModel):
     patron: str | None = Field(default=None, min_length=2, max_length=100)
     category_id: uuid.UUID | None = None
-
 
 
 class CategoryMappingOut(BaseModel):
@@ -505,7 +515,13 @@ class InvestmentAssetOut(InvestmentAssetBase):
     household_id: uuid.UUID
     created_at: datetime
 
-    @field_serializer("cantidad", "precio_compra", "precio_actual", "rentabilidad_esperada_anual", mode="plain", check_fields=False)
+    @field_serializer(
+        "cantidad",
+        "precio_compra",
+        "precio_actual",
+        "rentabilidad_esperada_anual",
+        mode="plain",
+        check_fields=False,
+    )
     def serialize_decimal(self, v: Decimal) -> float:
         return float(v) if v is not None else 0.0
-
