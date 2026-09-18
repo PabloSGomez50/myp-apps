@@ -27,6 +27,8 @@ app = FastAPI(
     description="Modular Monolith Backend for Household Management, Finances & Inventory",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/api/docs",         # Mueve la interfaz de Swagger UI
+    openapi_url="/api/openapi.json" # Mueve el esquema JSON necesario para la UI
 )
 
 # CORS Middleware
