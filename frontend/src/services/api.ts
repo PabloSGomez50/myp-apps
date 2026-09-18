@@ -12,6 +12,11 @@ import {
   ShoppingItem,
   SavingsGoal,
   EmergencyFundCalculation,
+  Broker,
+  BrokerTx,
+  BrokerTxType,
+  CurrencyQuote,
+  InvestmentAsset,
   Location,
   InventoryCategory,
   InventoryItem,
@@ -335,11 +340,145 @@ export const finanzasApi = {
     return data;
   },
 
+  createSavingsGoal: async (goalData: {
+    nombre: string;
+    monto_objetivo: number;
+    moneda?: string;
+    fecha_limite?: string | null;
+  }): Promise<SavingsGoal> => {
+    const { data } = await api.post<SavingsGoal>('/finanzas/savings/goals', goalData);
+    return data;
+  },
+
+  updateSavingsGoal: async (
+    id: string,
+    goalData: {
+      nombre?: string;
+      monto_objetivo?: number;
+      moneda?: string;
+      fecha_limite?: string | null;
+    }
+  ): Promise<SavingsGoal> => {
+    const { data } = await api.put<SavingsGoal>(`/finanzas/savings/goals/${id}`, goalData);
+    return data;
+  },
+
+  deleteSavingsGoal: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/savings/goals/${id}`);
+  },
+
+  contributeToGoal: async (
+    goalId: string,
+    contributionData: {
+      account_id?: string | null;
+      broker_id?: string | null;
+      monto: number;
+      fecha?: string;
+    }
+  ): Promise<SavingsGoal> => {
+    const { data } = await api.post<SavingsGoal>(`/finanzas/savings/goals/${goalId}/contribute`, contributionData);
+    return data;
+  },
+
   getEmergencyFund: async (meses: number = 3): Promise<EmergencyFundCalculation> => {
     const { data } = await api.get<EmergencyFundCalculation>('/finanzas/savings/emergency-fund-calculator', {
       params: { meses_cobertura: meses },
     });
     return data;
+  },
+
+  getBrokers: async (): Promise<Broker[]> => {
+    const { data } = await api.get<Broker[]>('/finanzas/investments/brokers');
+    return data;
+  },
+
+  createBroker: async (brokerData: {
+    nombre: string;
+    saldo_total_ars?: number;
+    saldo_total_usd?: number;
+    saldo_total_crypto?: number;
+    user_id?: string | null;
+  }): Promise<Broker> => {
+    const { data } = await api.post<Broker>('/finanzas/investments/brokers', brokerData);
+    return data;
+  },
+
+  recordBrokerTransaction: async (
+    brokerId: string,
+    txData: {
+      tipo: BrokerTxType;
+      monto: number;
+      moneda?: string;
+      descripcion: string;
+      fecha?: string;
+    }
+  ): Promise<BrokerTx> => {
+    const { data } = await api.post<BrokerTx>(`/finanzas/investments/brokers/${brokerId}/transactions`, txData);
+    return data;
+  },
+
+  getCurrencyQuotes: async (monedaOrigen?: string): Promise<CurrencyQuote[]> => {
+    const { data } = await api.get<CurrencyQuote[]>('/finanzas/currency-quotes', {
+      params: { moneda_origen: monedaOrigen },
+    });
+    return data;
+  },
+
+  getLatestCurrencyQuotes: async (): Promise<Record<string, number>> => {
+    const { data } = await api.get<Record<string, number>>('/finanzas/currency-quotes/latest');
+    return data;
+  },
+
+  createCurrencyQuote: async (quoteData: {
+    moneda_origen: string;
+    moneda_destino?: string;
+    cotizacion: number;
+    fecha?: string;
+  }): Promise<CurrencyQuote> => {
+    const { data } = await api.post<CurrencyQuote>('/finanzas/currency-quotes', quoteData);
+    return data;
+  },
+
+  getInvestmentAssets: async (): Promise<InvestmentAsset[]> => {
+    const { data } = await api.get<InvestmentAsset[]>('/finanzas/investments/assets');
+    return data;
+  },
+
+  createInvestmentAsset: async (assetData: {
+    ticker: string;
+    nombre: string;
+    tipo: string;
+    cantidad: number;
+    precio_compra?: number;
+    precio_actual: number;
+    rentabilidad_esperada_anual: number;
+    moneda?: string;
+    broker_id?: string | null;
+  }): Promise<InvestmentAsset> => {
+    const { data } = await api.post<InvestmentAsset>('/finanzas/investments/assets', assetData);
+    return data;
+  },
+
+  updateInvestmentAsset: async (
+    id: string,
+    assetData: Partial<{
+      ticker: string;
+      nombre: string;
+      tipo: string;
+      cantidad: number;
+      precio_compra: number;
+      precio_actual: number;
+      rentabilidad_esperada_anual: number;
+      moneda: string;
+      broker_id: string | null;
+    }>
+  ): Promise<InvestmentAsset> => {
+    const { data } = await api.put<InvestmentAsset>(`/finanzas/investments/assets/${id}`, assetData);
+    return data;
+  },
+
+  deleteInvestmentAsset: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/investments/assets/${id}`);
   },
 };
 

@@ -13,6 +13,7 @@ from app.modules.finanzas.schemas import (
     BrokerCreate,
     BrokerOut,
     BrokerTxCreate,
+    BrokerTxOut,
     BudgetCreate,
     BudgetOut,
     BulkImportRequest,
@@ -24,10 +25,16 @@ from app.modules.finanzas.schemas import (
     CategoryUpdate,
     CoupleBalanceOut,
     CsvParseResponse,
+    CurrencyQuoteCreate,
+    CurrencyQuoteOut,
     EmergencyFundCalculationOut,
     GoalContributionCreate,
+    InvestmentAssetCreate,
+    InvestmentAssetOut,
+    InvestmentAssetUpdate,
     SavingsGoalCreate,
     SavingsGoalOut,
+    SavingsGoalUpdate,
     SettlementCreate,
     ShoppingCheckoutRequest,
     ShoppingItemCreate,
@@ -551,6 +558,32 @@ async def create_savings_goal(
     return SavingsGoalOut.model_validate(goal)
 
 
+@finanzas_router.put(
+    "/savings/goals/{id}", response_model=SavingsGoalOut, status_code=status.HTTP_200_OK
+)
+async def update_savings_goal(
+    id: uuid.UUID,
+    data: SavingsGoalUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.update_savings_goal(db, id, household_id, data)
+
+
+@finanzas_router.delete(
+    "/savings/goals/{id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_savings_goal(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    await FinanzasService.delete_savings_goal(db, id, household_id)
+    return None
+
+
 @finanzas_router.post(
     "/savings/goals/{id}/contribute", response_model=SavingsGoalOut, status_code=status.HTTP_200_OK
 )
@@ -607,6 +640,7 @@ async def create_broker(
 
 @finanzas_router.post(
     "/investments/brokers/{id}/transactions",
+    response_model=BrokerTxOut,
     status_code=status.HTTP_201_CREATED,
 )
 async def record_broker_transaction(
@@ -616,7 +650,47 @@ async def record_broker_transaction(
     db: AsyncSession = Depends(get_db),
 ):
     user, _ = current_auth
-    return await FinanzasService.record_broker_transaction(db, id, data)
+    tx = await FinanzasService.record_broker_transaction(db, id, data)
+    return BrokerTxOut.model_validate(tx)
+
+
+# ==============================================================================
+# Currency Quotes (Histórico de Cotizaciones)
+# ==============================================================================
+@finanzas_router.get(
+    "/currency-quotes", response_model=list[CurrencyQuoteOut], status_code=status.HTTP_200_OK
+)
+async def get_currency_quotes(
+    moneda_origen: str | None = Query(None),
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.get_currency_quotes(db, household_id, moneda_origen)
+
+
+@finanzas_router.get(
+    "/currency-quotes/latest", status_code=status.HTTP_200_OK
+)
+async def get_latest_currency_quotes(
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.get_latest_currency_quotes(db, household_id)
+
+
+@finanzas_router.post(
+    "/currency-quotes", response_model=CurrencyQuoteOut, status_code=status.HTTP_201_CREATED
+)
+async def create_currency_quote(
+    data: CurrencyQuoteCreate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    quote = await FinanzasService.create_currency_quote(db, household_id, data)
+    return CurrencyQuoteOut.model_validate(quote)
 
 
 # ==============================================================================
@@ -692,3 +766,64 @@ async def bulk_import(
     _, household_id = current_auth
     count = await FinanzasService.bulk_import_transactions(db, household_id, data)
     return {"imported_count": count, "status": "success"}
+
+
+# ==============================================================================
+# Investment Assets & Holdings (Títulos, CEDEARs, FCIs)
+# ==============================================================================
+@finanzas_router.get(
+    "/investments/assets",
+    response_model=list[InvestmentAssetOut],
+    status_code=status.HTTP_200_OK,
+)
+async def get_investment_assets(
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.get_investment_assets(db, household_id)
+
+
+@finanzas_router.post(
+    "/investments/assets",
+    response_model=InvestmentAssetOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_investment_asset(
+    data: InvestmentAssetCreate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    asset = await FinanzasService.create_investment_asset(db, household_id, data)
+    return InvestmentAssetOut.model_validate(asset)
+
+
+@finanzas_router.put(
+    "/investments/assets/{id}",
+    response_model=InvestmentAssetOut,
+    status_code=status.HTTP_200_OK,
+)
+async def update_investment_asset(
+    id: uuid.UUID,
+    data: InvestmentAssetUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    asset = await FinanzasService.update_investment_asset(db, id, household_id, data)
+    return InvestmentAssetOut.model_validate(asset)
+
+
+@finanzas_router.delete(
+    "/investments/assets/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_investment_asset(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    await FinanzasService.delete_investment_asset(db, id, household_id)
+    return None

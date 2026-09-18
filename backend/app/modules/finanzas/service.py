@@ -17,8 +17,10 @@ from app.modules.finanzas.models import (
     Budget,
     Category,
     CategoryMapping,
+    CurrencyQuote,
     ExpenseTypeEnum,
     GoalContribution,
+    InvestmentAsset,
     SavingsGoal,
     ShoppingItem,
     ShoppingList,
@@ -42,10 +44,16 @@ from app.modules.finanzas.schemas import (
     CoupleBalanceOut,
     CsvParseResponse,
     CsvPreviewRow,
+    CurrencyQuoteCreate,
+    CurrencyQuoteOut,
     EmergencyFundCalculationOut,
     GoalContributionCreate,
+    GoalContributionOut,
+    InvestmentAssetCreate,
+    InvestmentAssetUpdate,
     SavingsGoalCreate,
     SavingsGoalOut,
+    SavingsGoalUpdate,
     SettlementCreate,
     ShoppingCheckoutRequest,
     ShoppingItemCreate,
@@ -689,9 +697,66 @@ class FinanzasService:
         return goal
 
     @staticmethod
+    async def update_savings_goal(
+        db: AsyncSession, goal_id: uuid.UUID, household_id: uuid.UUID, data: SavingsGoalUpdate
+    ) -> SavingsGoalOut:
+        goal = await db.get(SavingsGoal, goal_id)
+        if not goal or goal.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada."
+            )
+
+        if data.nombre is not None:
+            goal.nombre = data.nombre.strip()
+        if data.monto_objetivo is not None:
+            goal.monto_objetivo = data.monto_objetivo
+        if data.moneda is not None:
+            goal.moneda = data.moneda.strip().upper()
+        if data.fecha_limite is not None:
+            goal.fecha_limite = data.fecha_limite
+
+        await db.commit()
+
+        goal_res = await db.execute(
+            select(SavingsGoal)
+            .options(selectinload(SavingsGoal.contributions))
+            .where(SavingsGoal.id == goal_id)
+        )
+        reloaded_goal = goal_res.scalar_one()
+
+        pct = (
+            (reloaded_goal.monto_acumulado / reloaded_goal.monto_objetivo * 100)
+            if reloaded_goal.monto_objetivo > 0
+            else Decimal("0.00")
+        )
+        contrib_outs = [GoalContributionOut.model_validate(c) for c in reloaded_goal.contributions]
+        return SavingsGoalOut(
+            id=reloaded_goal.id,
+            household_id=reloaded_goal.household_id,
+            nombre=reloaded_goal.nombre,
+            monto_objetivo=reloaded_goal.monto_objetivo,
+            monto_acumulado=reloaded_goal.monto_acumulado,
+            moneda=reloaded_goal.moneda,
+            fecha_limite=reloaded_goal.fecha_limite,
+            porcentaje_avance=pct,
+            contributions=contrib_outs,
+            created_at=reloaded_goal.created_at,
+        )
+
+    @staticmethod
+    async def delete_savings_goal(
+        db: AsyncSession, goal_id: uuid.UUID, household_id: uuid.UUID
+    ) -> None:
+        goal = await db.get(SavingsGoal, goal_id)
+        if goal and goal.household_id == household_id:
+            await db.delete(goal)
+            await db.commit()
+
+    @staticmethod
     async def get_savings_goals(db: AsyncSession, household_id: uuid.UUID) -> list[SavingsGoalOut]:
         result = await db.execute(
             select(SavingsGoal)
+            .options(selectinload(SavingsGoal.contributions))
             .where(SavingsGoal.household_id == household_id)
             .order_by(SavingsGoal.nombre)
         )
@@ -703,6 +768,7 @@ class FinanzasService:
                 if g.monto_objetivo > 0
                 else Decimal("0.00")
             )
+            contrib_outs = [GoalContributionOut.model_validate(c) for c in g.contributions]
             goal_outs.append(
                 SavingsGoalOut(
                     id=g.id,
@@ -713,6 +779,7 @@ class FinanzasService:
                     moneda=g.moneda,
                     fecha_limite=g.fecha_limite,
                     porcentaje_avance=pct,
+                    contributions=contrib_outs,
                     created_at=g.created_at,
                 )
             )
@@ -721,30 +788,58 @@ class FinanzasService:
     @staticmethod
     async def contribute_to_goal(
         db: AsyncSession, user_id: uuid.UUID, goal_id: uuid.UUID, data: GoalContributionCreate
-    ) -> SavingsGoal:
+    ) -> SavingsGoalOut:
         goal = await db.get(SavingsGoal, goal_id)
-        account = await db.get(Account, data.account_id)
-        if not goal or not account:
+        if not goal:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Meta o cuenta no encontrada."
+                status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada."
             )
+
+        if data.account_id:
+            account = await db.get(Account, data.account_id)
+            if account:
+                account.saldo_actual -= data.monto
 
         contribution = GoalContribution(
             goal_id=goal_id,
             user_id=user_id,
             account_id=data.account_id,
+            broker_id=data.broker_id,
             monto=data.monto,
-            fecha=datetime.now(UTC),
+            fecha=data.fecha if data.fecha else datetime.now(UTC),
         )
         db.add(contribution)
 
-        # Deduct from account and add to goal
-        account.saldo_actual -= data.monto
+        # Add to goal
         goal.monto_acumulado += data.monto
 
         await db.commit()
-        await db.refresh(goal)
-        return goal
+
+        goal_res = await db.execute(
+            select(SavingsGoal)
+            .options(selectinload(SavingsGoal.contributions))
+            .where(SavingsGoal.id == goal_id)
+        )
+        reloaded_goal = goal_res.scalar_one()
+
+        pct = (
+            (reloaded_goal.monto_acumulado / reloaded_goal.monto_objetivo * 100)
+            if reloaded_goal.monto_objetivo > 0
+            else Decimal("0.00")
+        )
+        contrib_outs = [GoalContributionOut.model_validate(c) for c in reloaded_goal.contributions]
+        return SavingsGoalOut(
+            id=reloaded_goal.id,
+            household_id=reloaded_goal.household_id,
+            nombre=reloaded_goal.nombre,
+            monto_objetivo=reloaded_goal.monto_objetivo,
+            monto_acumulado=reloaded_goal.monto_acumulado,
+            moneda=reloaded_goal.moneda,
+            fecha_limite=reloaded_goal.fecha_limite,
+            porcentaje_avance=pct,
+            contributions=contrib_outs,
+            created_at=reloaded_goal.created_at,
+        )
 
     @staticmethod
     async def calculate_emergency_fund(
@@ -810,8 +905,9 @@ class FinanzasService:
     async def create_broker(
         db: AsyncSession, user_id: uuid.UUID, household_id: uuid.UUID, data: BrokerCreate
     ) -> Broker:
+        target_user = data.user_id or user_id
         broker = Broker(
-            user_id=user_id,
+            user_id=target_user,
             household_id=household_id,
             nombre=data.nombre,
             saldo_total_ars=data.saldo_total_ars,
@@ -845,13 +941,14 @@ class FinanzasService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="Broker no encontrado."
             )
 
+        tx_fecha = data.fecha if data.fecha else datetime.now(UTC)
         tx = BrokerTransaction(
             broker_id=broker_id,
             tipo=data.tipo,
             monto=data.monto,
             moneda=data.moneda,
             descripcion=data.descripcion,
-            fecha=datetime.now(UTC),
+            fecha=tx_fecha,
         )
         db.add(tx)
 
@@ -870,6 +967,51 @@ class FinanzasService:
         await db.commit()
         await db.refresh(tx)
         return tx
+
+    # ==========================================================================
+    # Currency Quotes (Histórico de Cotizaciones)
+    # ==========================================================================
+    @staticmethod
+    async def create_currency_quote(
+        db: AsyncSession, household_id: uuid.UUID, data: CurrencyQuoteCreate
+    ) -> CurrencyQuote:
+        quote = CurrencyQuote(
+            household_id=household_id,
+            moneda_origen=data.moneda_origen.upper(),
+            moneda_destino=data.moneda_destino.upper(),
+            cotizacion=data.cotizacion,
+            fecha=data.fecha if data.fecha else datetime.now(UTC),
+        )
+        db.add(quote)
+        await db.commit()
+        await db.refresh(quote)
+        return quote
+
+    @staticmethod
+    async def get_currency_quotes(
+        db: AsyncSession, household_id: uuid.UUID, moneda_origen: str | None = None
+    ) -> list[CurrencyQuote]:
+        query = select(CurrencyQuote).where(CurrencyQuote.household_id == household_id)
+        if moneda_origen:
+            query = query.where(func.upper(CurrencyQuote.moneda_origen) == moneda_origen.upper())
+        result = await db.execute(query.order_by(CurrencyQuote.fecha.desc()))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_latest_currency_quotes(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> dict[str, Decimal]:
+        result = await db.execute(
+            select(CurrencyQuote)
+            .where(CurrencyQuote.household_id == household_id)
+            .order_by(CurrencyQuote.fecha.desc())
+        )
+        quotes = result.scalars().all()
+        latest_map: dict[str, Decimal] = {}
+        for q in quotes:
+            if q.moneda_origen not in latest_map:
+                latest_map[q.moneda_origen] = q.cotizacion
+        return latest_map
 
     # ==========================================================================
     # Category Mappings & CSV Import
@@ -1164,4 +1306,83 @@ class FinanzasService:
 
         await db.commit()
         return count
+
+    # ==========================================================================
+    # Investment Assets & Holdings
+    # ==========================================================================
+    @staticmethod
+    async def create_investment_asset(
+        db: AsyncSession, household_id: uuid.UUID, data: InvestmentAssetCreate
+    ) -> InvestmentAsset:
+        asset = InvestmentAsset(
+            household_id=household_id,
+            broker_id=data.broker_id,
+            ticker=data.ticker.strip().upper(),
+            nombre=data.nombre.strip(),
+            tipo=data.tipo.strip().upper(),
+            cantidad=data.cantidad,
+            precio_compra=data.precio_compra,
+            precio_actual=data.precio_actual,
+            rentabilidad_esperada_anual=data.rentabilidad_esperada_anual,
+            moneda=data.moneda.strip().upper(),
+        )
+        db.add(asset)
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+
+    @staticmethod
+    async def get_investment_assets(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> list[InvestmentAsset]:
+        result = await db.execute(
+            select(InvestmentAsset)
+            .options(selectinload(InvestmentAsset.broker))
+            .where(InvestmentAsset.household_id == household_id)
+            .order_by(InvestmentAsset.nombre)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def delete_investment_asset(
+        db: AsyncSession, id: uuid.UUID, household_id: uuid.UUID
+    ) -> None:
+        asset = await db.get(InvestmentAsset, id)
+        if asset and asset.household_id == household_id:
+            await db.delete(asset)
+            await db.commit()
+
+    @staticmethod
+    async def update_investment_asset(
+        db: AsyncSession, id: uuid.UUID, household_id: uuid.UUID, data: InvestmentAssetUpdate
+    ) -> InvestmentAsset:
+        asset = await db.get(InvestmentAsset, id)
+        if not asset or asset.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Activo de inversión no encontrado."
+            )
+
+        if data.broker_id is not None:
+            asset.broker_id = data.broker_id
+        if data.ticker is not None:
+            asset.ticker = data.ticker.strip().upper()
+        if data.nombre is not None:
+            asset.nombre = data.nombre.strip()
+        if data.tipo is not None:
+            asset.tipo = data.tipo.strip().upper()
+        if data.cantidad is not None:
+            asset.cantidad = data.cantidad
+        if data.precio_compra is not None:
+            asset.precio_compra = data.precio_compra
+        if data.precio_actual is not None:
+            asset.precio_actual = data.precio_actual
+        if data.rentabilidad_esperada_anual is not None:
+            asset.rentabilidad_esperada_anual = data.rentabilidad_esperada_anual
+        if data.moneda is not None:
+            asset.moneda = data.moneda.strip().upper()
+
+        await db.commit()
+        await db.refresh(asset)
+        return asset
+
 

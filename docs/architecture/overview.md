@@ -20,7 +20,7 @@ graph TD
     subgraph Postgres_Schemas["PostgreSQL Schemas"]
         direction TB
         SchemaCore["Schema: core<br>(users, households, household_members)"]
-        SchemaFinanzas["Schema: finanzas<br>(accounts, categories, category_mappings, budgets, transactions, shopping_lists, savings_goals, brokers)"]
+        SchemaFinanzas["Schema: finanzas<br>(accounts, categories, category_mappings, budgets, transactions, shopping_lists, savings_goals, brokers, currency_quotes, investment_assets)"]
         SchemaInventario["Schema: inventario<br>(items, stock, ubicaciones)"]
         
         SchemaFinanzas -->|Foreign Keys| SchemaCore
@@ -98,8 +98,10 @@ myp-apps/
    - `budgets`: Presupuestos mensuales por categoría (`month`, `year`, `monto_limite`).
    - `transactions`: Movimientos financieros con discriminación de gastos compartidos 50/50 y liquidaciones (`SETTLEMENT`).
    - `shopping_lists` & `shopping_items`: Listas de compras con descuento general de carrito y descuentos específicos por producto.
-   - `savings_goals` & `goal_contributions`: Metas de ahorro y aportes registrados.
+   - `savings_goals` & `goal_contributions`: Metas de ahorro y aportes registrados (con desvinculación de cuentas bancarias).
    - `brokers` & `broker_transactions`: Plataformas de inversión (saldos en ARS, USD y Crypto).
+   - `currency_quotes`: Registro histórico de cotizaciones de divisas y criptoactivos (`USD_MEP`, `USD_BLUE`, `USDT`, `BTC`).
+   - `investment_assets`: Títulos, CEDEARs, Acciones y Fondos Comunes de Inversión con rendimiento esperado mensual/anual.
 
 3. **`inventario`**:
    - Reservado para el control de stock, despensa y activos del hogar.

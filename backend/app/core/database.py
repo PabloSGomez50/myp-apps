@@ -42,3 +42,4 @@ async def init_db_schemas() -> None:
     async with async_engine.begin() as conn:
         for schema in ["core", "finanzas", "inventario"]:
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema};"))
+

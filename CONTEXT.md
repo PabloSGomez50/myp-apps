@@ -46,3 +46,13 @@ Este glosario establece las definiciones formales del vocabulario utilizado en e
 - **Flujo Libre del Mes (`Monthly Free Cashflow`)**: Margen financiero sobrante o déficit real calculado en tiempo real ($\text{Total Ingresos} - \text{Total Gastos Imputables}$).
 - **Evolución Mensual de Gastos (`Category Bar Chart`)**: Gráfico comparativo por categoría ordenado de mayor a menor volumen de gasto con toggle en tiempo real entre **Barras Apiladas (Stacked)** y **Barras Agrupadas (Grouped)**.
 - **Fondo de Emergencia (`Emergency Fund`)**: Meta de ahorro calculada en base al promedio de gastos fijos del hogar (`FIXED_HOUSEHOLD` + `FIXED_PERSONAL`).
+
+---
+
+### 📈 Inversiones y Ahorros (`Fase 5 - ADR 0003`)
+
+- **Meta de Ahorro (`SavingsGoal`)**: Objetivo financiero con monto objetivo, monto acumulado, fecha límite y ámbito (Personal o Compartido del Hogar).
+- **Aporte a Meta (`GoalContribution`)**: Depósito realizado hacia una meta de ahorro que se deduce del Flujo Disponible del Mes como dinero comprometido para reserva.
+- **Broker / Entidad de Inversión (`Broker`)**: Entidad financiera personal (Balanz, IOL, Lemon, Mercado Pago, etc.) que administra tenencias en ARS, USD y Crypto de forma independiente a las cuentas bancarias para evitar desfasajes.
+- **Movimiento de Broker (`BrokerTransaction`)**: Registro de depósito, rescate, compra/venta de activo o suscripción/rescate de Fondo Común de Inversión (FCI).
+- **Histórico de Cotizaciones (`CurrencyQuote`)**: Registro temporal de la cotizaciones de divisas y crypto (ej. `USD_MEP`, `USD_BLUE`, `USDT`, `BTC`) para calcular la valorización consolidada del portafolio.

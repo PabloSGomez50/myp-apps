@@ -185,13 +185,18 @@ export type InvestmentType =
 
 export interface InvestmentAsset {
   id: string;
+  household_id?: string;
+  broker_id?: string | null;
   ticker: string;
   nombre: string;
-  tipo: InvestmentType;
+  tipo: string;
   cantidad: number;
-  precio_promedio_compra: number;
+  precio_compra?: number;
   precio_actual: number;
+  rentabilidad_esperada_anual: number;
   moneda: 'ARS' | 'USD';
+  broker?: Broker | null;
+  created_at?: string;
 }
 
 export interface CoupleBalance {
@@ -228,6 +233,17 @@ export interface ShoppingList {
   created_at: string;
 }
 
+export interface GoalContribution {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  account_id?: string | null;
+  broker_id?: string | null;
+  monto: number;
+  fecha: string;
+  created_at: string;
+}
+
 export interface SavingsGoal {
   id: string;
   household_id: string;
@@ -237,6 +253,7 @@ export interface SavingsGoal {
   porcentaje_avance: number;
   moneda: string;
   fecha_limite?: string | null;
+  contributions?: GoalContribution[];
   created_at: string;
 }
 
@@ -247,6 +264,47 @@ export interface EmergencyFundCalculation {
   ahorro_actual_emergencia: number;
   porcentaje_cobertura_actual: number;
   meses_cubiertos_reales: number;
+}
+
+export type BrokerTxType =
+  | 'DEPOSIT'
+  | 'WITHDRAW'
+  | 'BUY_SIMPLE'
+  | 'SELL_SIMPLE'
+  | 'FCI_SUBSCRIBE'
+  | 'FCI_REDEEM';
+
+export interface Broker {
+  id: string;
+  user_id: string;
+  household_id: string;
+  nombre: string;
+  saldo_total_ars: number;
+  saldo_total_usd: number;
+  saldo_total_crypto: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface BrokerTx {
+  id: string;
+  broker_id: string;
+  tipo: BrokerTxType;
+  monto: number;
+  moneda: string;
+  descripcion: string;
+  fecha: string;
+  created_at: string;
+}
+
+export interface CurrencyQuote {
+  id: string;
+  household_id: string;
+  moneda_origen: string;
+  moneda_destino: string;
+  cotizacion: number;
+  fecha: string;
+  created_at: string;
 }
 
 export interface Location {

@@ -35,7 +35,7 @@ myp-apps/
 │   └── nginx.conf            # Configuración Nginx Alpine
 ├── docs/                     # Documentación, especificaciones y ADRs
 │   ├── architecture/         # overview.md, finanzas-domain-spec.md
-│   ├── adr/                  # 0001-modular-monolith-architecture.md, 0002-finanzas-domain-design.md
+│   ├── adr/                  # 0001-modular-monolith-architecture.md, 0002-finanzas-domain-design.md, 0003-inversiones-y-ahorro-domain-design.md
 │   └── roadmap.md            # Plan de fases y tareas pendientes
 ├── docker-compose.yml        # Orquestación de servicios
 ├── CONTEXT.md                # Glosario y Lenguaje Ubicuo del Dominio
@@ -45,7 +45,10 @@ myp-apps/
 ## 📜 Core Rules & Constraints
 1. **Simplicidad & Rendimiento:** Priorizar soluciones estándar y ligeras para no saturar la RAM de la Raspberry Pi 5 (< 280MB en total).
 2. **Modularidad Estricta:** Separar dominios lógicamente mediante `APIRouter` y esquemas de PostgreSQL (`core`, `finanzas`, `inventario`). Las dependencias cruzadas deben resolverse mediante claves foráneas hacia `core` o servicios en Python.
-3. **Calidad de Código:** Mantener `ruff` en backend con 0 errores y TypeScript estricto en frontend. Toda nueva funcionalidad de backend debe incluir sus tests con `pytest`.
+3. **Calidad de Código & Migraciones:** 
+   - Mantener `ruff` en backend con 0 errores y TypeScript estricto en frontend. Toda nueva funcionalidad de backend debe incluir sus tests con `pytest`.
+   - **Gestión Estricta de Migraciones Alembic:** El esquema de base de datos se gestiona exclusivamente con `uv run alembic upgrade head` (sin `Base.metadata.create_all` en runtime para evitar desfasajes).
+   - **Restricción de Identificadores Alembic:** Los identificadores de revisión (`revision_id`) DEBEN tener como máximo **32 caracteres** de longitud due al tipo de columna `VARCHAR(32)` de la tabla `core.alembic_version` en PostgreSQL (ej. `0004_quotes_and_broker_goals`).
 4. **Dominio Financiero (50/50):** 
    - Cuentas 100% personales (sin cuentas conjuntas bancarias).
    - Gastos compartidos divididos 50/50 con balance Splitwise continuo e imputación al 50% en vista individual.
@@ -56,6 +59,7 @@ myp-apps/
 
 ## 🔄 Workflows & Comandos Frecuentes
 - **Backend Tests:** `cd backend && uv run pytest -v`
+- **Backend Migrations:** `cd backend && uv run alembic upgrade head`
 - **Backend Linting:** `cd backend && uv run ruff check --fix . && uv run ruff format .`
 - **Backend Local:** `cd backend && uv run uvicorn app.main:app --reload --port 8000`
 - **Frontend Build:** `cd frontend && pnpm run build`
@@ -63,7 +67,13 @@ myp-apps/
 - **Docker Stack:** `docker compose up -d --build`
 - **Docker Logs:** `docker compose logs -f [servicio]`
 
-## 🎯 Current Objectives & Achievements (Fase 3, 4 & Enhancements)
+## 🎯 Current Objectives & Achievements & Validation Status
+
+> [!IMPORTANT]
+> **Estado de Validación por el Usuario:**
+> - **Fases 1, 2 y 3:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El core de auth, gastos 50/50, CSV, balance dashboard, automapeo y categorización están probados y aprobados.
+> - **Fases 4 y 5:** 🟡 **IMPLEMENTADAS EN CÓDIGO PERO PENDIENTES DE VALIDACIÓN FUNCIONAL POR EL USUARIO.** Toda la lógica backend, schemas, endpoints, tests de pytest y componentes frontend React están 100% desarrollados y compilando sin errores, pero **el usuario aún no los ha probado en producción/uso real**, por lo que están sujetos a cambios o refinamientos según su uso diario.
+
 - **Frontend SPA Integration:** Interfaz modular React 18 + Vite conectada 100% con FastAPI endpoints via React Query.
 - **Navegación & Layout:** Sidebar colapsable con persistencia en `localStorage`, posicionamiento `sticky top-16` y ancho responsivo expandido (`max-w-[1750px]`) optimizado para monitores 1920x1080.
 - **Centro de Movimientos & CSV:** Tabla de movimientos con filtros por fecha/categoría/usuario, paginación, importador CSV y borrado masivo por filtros (`POST /transactions/bulk-delete`).
@@ -73,9 +83,18 @@ myp-apps/
   - Evolución mensual de gastos en ARS ordenada por volumen de gasto con toggle en tiempo real entre **Barras Apiladas (Stacked)** y **Barras Agrupadas (Grouped)**.
   - Modal `NewIncomeModal.tsx` para registrar sueldos/ingresos por integrante.
   - Modal `NewTransactionModal.tsx` mejorado: categorías en fila 1, sugerencias de automapeo cliqueables y selector de integrante por avatar.
-  - Modal `SettlementModal.tsx` optimizado: auto-selección de emisor/destinatario en convivencias de 2 miembros y layout reordenado (Monto -> Fecha/Concepto -> Emisor/Destinatario).
+  - Modal `SettlementModal.tsx` optimizado: auto-selección de emisor/destinatario en convivencias de 2 miembros y layout reordenado.
 - **Gestión del Hogar & Reglas (`HogarPage.tsx`):**
   - **Configurador de Avatares:** Color de avatar configurable por usuario (`PUT /api/v1/core/users/{id}`) exhibiendo la inicial ("P", "M") de cada integrante.
-  - **CRUD de Categorías:** Creación, edición y eliminación suave con vista de bloque de color identificador (reemplazando emojis).
+  - **CRUD de Categorías:** Creación, edición y eliminación suave con vista de bloque de color identificador.
   - **Tipos de Gastos:** Exposición interactiva de los 5 tipos de gastos del sistema con distintivo `🔒 Reglas de Sistema Fijas`.
   - **Reglas de Automapeo:** Tabla avanzada con CRUD completo (`GET`, `POST`, `PUT`, `DELETE /category-mappings/{id}`), buscador por palabra clave, filtros por categoría y tipo de gasto, y ordenamiento dinámico.
+- **Módulo de Inversiones, Ahorros, Títulos & Cotizaciones (`InversionesPage.tsx`):**
+  - **Migraciones Alembic 0004 & 0005:**
+    - `0004_quotes_and_broker_goals`: Esquema idempotente multi-tabla para `currency_quotes`, `investment_assets` y desacoplamiento de metas respecto a saldos bancarios.
+    - `0005_nullable_goal_contrib_acc`: Columna `account_id` opcional (`nullable=True`) en `finanzas.goal_contributions` permitiendo aportes desacoplados de cuentas bancarias.
+  - **Operaciones en Broker (`BrokerTxModal.tsx`):** Enums sincronizados con backend (`DEPOSIT`, `WITHDRAW`, `BUY_SIMPLE`, `SELL_SIMPLE`, `FCI_SUBSCRIBE`, `FCI_REDEEM`).
+  - **CRUD Completo de Metas de Ahorro:** Creación, edición (`PUT /savings/goals/{id}`) y eliminación suave/cascada (`DELETE /savings/goals/{id}`).
+  - **CRUD Completo de Títulos, CEDEARs, Acciones y Fondos FCI:** Creación, edición (`PUT /investments/assets/{id}`) y eliminación (`DELETE /investments/assets/{id}`) con estimación de rentabilidad proyectada mensual/anual (`gananciaMensual`, `gananciaAnual`).
+  - **Componente `BrokerDistributionPieChart.tsx`:** Gráfico de torta reutilizable en 1 columna adaptado al layout de distribución de brokers.
+  - **Histórico de Cotizaciones:** CRUD de cotizaciones de divisas y cripto (`USD_MEP`, `USD_BLUE`, `USDT`, `BTC`).

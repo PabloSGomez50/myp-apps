@@ -253,10 +253,15 @@ class GoalContribution(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    account_id: Mapped[uuid.UUID] = mapped_column(
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("finanzas.accounts.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("finanzas.accounts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finanzas.brokers.id", ondelete="SET NULL"),
+        nullable=True,
     )
     monto: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     fecha: Mapped[datetime] = mapped_column(
@@ -264,6 +269,7 @@ class GoalContribution(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     goal: Mapped["SavingsGoal"] = relationship("SavingsGoal", back_populates="contributions")
+    broker: Mapped["Broker | None"] = relationship("Broker", back_populates="contributions")
 
 
 class Broker(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -293,6 +299,10 @@ class Broker(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Numeric(18, 8), default=Decimal("0.00"), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    contributions: Mapped[list["GoalContribution"]] = relationship(
+        "GoalContribution", back_populates="broker"
+    )
 
 
 class BrokerTransaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -336,4 +346,51 @@ class CategoryMapping(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     category: Mapped["Category"] = relationship("Category", lazy="selectin")
+
+
+class CurrencyQuote(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "currency_quotes"
+    __table_args__ = {"schema": "finanzas"}
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    moneda_origen: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    moneda_destino: Mapped[str] = mapped_column(String(10), default="ARS", nullable=False)
+    cotizacion: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
+    )
+
+
+class InvestmentAsset(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "investment_assets"
+    __table_args__ = {"schema": "finanzas"}
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finanzas.brokers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(50), nullable=False)
+    cantidad: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=Decimal("0.00"), nullable=False)
+    precio_compra: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), nullable=False)
+    precio_actual: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), nullable=False)
+    rentabilidad_esperada_anual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0.00"), nullable=False)
+    moneda: Mapped[str] = mapped_column(String(10), default="ARS", nullable=False)
+
+    broker: Mapped["Broker | None"] = relationship("Broker")
+
 

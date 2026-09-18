@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.modules.finanzas.models import (
     AccountTypeEnum,
@@ -256,9 +256,35 @@ class SavingsGoalCreate(SavingsGoalBase):
     pass
 
 
+class SavingsGoalUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=100)
+    monto_objetivo: Decimal | None = Field(default=None, gt=0)
+    moneda: str | None = Field(default=None, max_length=10)
+    fecha_limite: date | None = None
+
+
 class GoalContributionCreate(BaseModel):
-    account_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    broker_id: uuid.UUID | None = None
     monto: Decimal = Field(..., gt=0)
+    fecha: datetime | None = None
+
+
+class GoalContributionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    goal_id: uuid.UUID
+    user_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    broker_id: uuid.UUID | None = None
+    monto: Decimal
+    fecha: datetime
+    created_at: datetime
+
+    @field_serializer("monto", mode="plain")
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 
 
 class SavingsGoalOut(SavingsGoalBase):
@@ -268,7 +294,12 @@ class SavingsGoalOut(SavingsGoalBase):
     household_id: uuid.UUID
     monto_acumulado: Decimal
     porcentaje_avance: Decimal = Decimal("0.00")
+    contributions: list[GoalContributionOut] = []
     created_at: datetime
+
+    @field_serializer("monto_objetivo", "monto_acumulado", "porcentaje_avance", mode="plain", check_fields=False)
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 
 
 class EmergencyFundCalculationOut(BaseModel):
@@ -278,6 +309,10 @@ class EmergencyFundCalculationOut(BaseModel):
     ahorro_actual_emergencia: Decimal
     porcentaje_cobertura_actual: Decimal
     meses_cubiertos_reales: Decimal
+
+    @field_serializer("gasto_fijo_promedio_mensual", "meta_sugerida", "ahorro_actual_emergencia", "porcentaje_cobertura_actual", "meses_cubiertos_reales", mode="plain")
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 
 
 # ==============================================================================
@@ -291,7 +326,7 @@ class BrokerBase(BaseModel):
 
 
 class BrokerCreate(BrokerBase):
-    pass
+    user_id: uuid.UUID | None = None
 
 
 class BrokerTxCreate(BaseModel):
@@ -299,6 +334,24 @@ class BrokerTxCreate(BaseModel):
     monto: Decimal = Field(..., gt=0)
     moneda: str = Field(default="ARS", max_length=10)
     descripcion: str = Field(..., max_length=255)
+    fecha: datetime | None = None
+
+
+class BrokerTxOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    broker_id: uuid.UUID
+    tipo: BrokerTxTypeEnum
+    monto: Decimal
+    moneda: str
+    descripcion: str
+    fecha: datetime
+    created_at: datetime
+
+    @field_serializer("monto", mode="plain")
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 
 
 class BrokerOut(BrokerBase):
@@ -309,6 +362,36 @@ class BrokerOut(BrokerBase):
     household_id: uuid.UUID
     is_active: bool
     created_at: datetime
+
+    @field_serializer("saldo_total_ars", "saldo_total_usd", "saldo_total_crypto", mode="plain", check_fields=False)
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
+
+
+# ==============================================================================
+# Currency Quotes (Histórico de Cotizaciones)
+# ==============================================================================
+class CurrencyQuoteBase(BaseModel):
+    moneda_origen: str = Field(..., min_length=1, max_length=20)
+    moneda_destino: str = Field(default="ARS", max_length=10)
+    cotizacion: Decimal = Field(..., gt=0)
+    fecha: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class CurrencyQuoteCreate(CurrencyQuoteBase):
+    pass
+
+
+class CurrencyQuoteOut(CurrencyQuoteBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    created_at: datetime
+
+    @field_serializer("cotizacion", mode="plain", check_fields=False)
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 
 
 # ==============================================================================
@@ -382,4 +465,47 @@ class BulkImportRow(BaseModel):
 class BulkImportRequest(BaseModel):
     rows: list[BulkImportRow]
     new_mappings: list[CategoryMappingCreate] = Field(default_factory=list)
+
+
+# ==============================================================================
+# Investment Assets & Holdings
+# ==============================================================================
+class InvestmentAssetBase(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=20)
+    nombre: str = Field(..., min_length=1, max_length=150)
+    tipo: str = Field(..., max_length=50)
+    cantidad: Decimal = Field(default=Decimal("0.00"), ge=0)
+    precio_compra: Decimal = Field(default=Decimal("0.00"), ge=0)
+    precio_actual: Decimal = Field(default=Decimal("0.00"), ge=0)
+    rentabilidad_esperada_anual: Decimal = Field(default=Decimal("0.00"), ge=0)
+    moneda: str = Field(default="ARS", max_length=10)
+    broker_id: uuid.UUID | None = None
+
+
+class InvestmentAssetCreate(InvestmentAssetBase):
+    pass
+
+
+class InvestmentAssetUpdate(BaseModel):
+    broker_id: uuid.UUID | None = None
+    ticker: str | None = Field(default=None, max_length=20)
+    nombre: str | None = Field(default=None, max_length=150)
+    tipo: str | None = Field(default=None, max_length=50)
+    cantidad: Decimal | None = Field(default=None, ge=0)
+    precio_compra: Decimal | None = Field(default=None, ge=0)
+    precio_actual: Decimal | None = Field(default=None, ge=0)
+    rentabilidad_esperada_anual: Decimal | None = Field(default=None, ge=0)
+    moneda: str | None = Field(default=None, max_length=10)
+
+
+class InvestmentAssetOut(InvestmentAssetBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    created_at: datetime
+
+    @field_serializer("cantidad", "precio_compra", "precio_actual", "rentabilidad_esperada_anual", mode="plain", check_fields=False)
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
 

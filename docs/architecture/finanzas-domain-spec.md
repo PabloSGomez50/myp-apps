@@ -70,4 +70,20 @@ Clasificación estructurada en dos dimensiones (Ámbito x Naturaleza) identifica
 │   ├── POST /split             # Registrar gasto compartido 50/50
 │   ├── POST /settlement        # Registrar liquidación parcial/total de saldo
 │   └── POST /bulk-delete       # Borrado masivo por filtros aplicados
+├── currency-quotes/
+│   ├── GET /                   # Consultar cotizaciones históricas
+│   ├── POST /                  # Registrar nueva cotización (USD/Crypto)
+│   └── DELETE /{id}            # Eliminar cotización
+├── savings-goals/
+│   ├── GET /                   # Listar metas de ahorro
+│   ├── POST /                  # Crear meta de ahorro
+│   └── POST /{id}/contribute   # Registrar aporte a meta (asociado opcionalmente a broker)
+├── brokers/
+│   ├── GET /                   # Listar brokers y entidades
+│   ├── POST /                  # Crear broker
+│   └── POST /{id}/transactions # Registrar transacción de broker
+└── investments/assets/
+    ├── GET /                   # Listar títulos, CEDEARs, Acciones y Fondos FCI
+    ├── POST /                  # Registrar nuevo título o FCI con rendimiento esperado %
+    └── DELETE /{id}            # Eliminar título o activo
 ```

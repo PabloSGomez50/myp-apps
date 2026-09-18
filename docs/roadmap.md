@@ -2,9 +2,14 @@
 
 Estado actual de avance y guía de tareas para las próximas sesiones de desarrollo con Antigravity.
 
+> [!IMPORTANT]
+> **Aviso de Estado de Validación de Usuario:**
+> - **Fases 1, 2 y 3:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El backend, frontend y las funcionalidades de finanzas/gastos 50/50 están totalmente probadas y aprobadas en uso real.
+> - **Fases 4 y 5:** 🟡 **IMPLEMENTADAS EN CÓDIGO PERO PENDIENTES DE VALIDACIÓN FUNCIONAL POR EL USUARIO.** Toda la arquitectura, modelos, endpoints, tests de pytest (14/14 pasando) y vistas de React están desarrollados, pero **aún no fueron validados por el usuario en uso continuo**, por lo que están sujetos a revisiones o ajustes de diseño/flujo.
+
 ---
 
-## ✅ Fase 1: Arquitectura y Scaffolding Base (COMPLETADO)
+## ✅ Fase 1: Arquitectura y Scaffolding Base (COMPLETADO Y VALIDADO)
 - [x] Diagramación de Monolito Modular con FastAPI y React/Vite SPA.
 - [x] Configuración de `docker-compose.yml` optimizado (< 280MB RAM) con PostgreSQL 16 y Redis 7 Alpine.
 - [x] Configuración de `uv` en backend y `pnpm` con Node 22 Alpine en frontend.
@@ -13,7 +18,7 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 ---
 
-## ✅ Fase 2: Backend Core & Finanzas (COMPLETADO)
+## ✅ Fase 2: Backend Core & Finanzas (COMPLETADO Y VALIDADO)
 - [x] Modelos relacionales PostgreSQL en esquema `core` (`User`, `Household`, `HouseholdMember`).
 - [x] Autenticación JWT con hashing `bcrypt` y conmutación ágil por PIN de 4 dígitos.
 - [x] Modelos relacionales PostgreSQL en esquema `finanzas` (`Account`, `Category`, `CategoryMapping`, `Budget`, `Transaction`, `ShoppingList`, `SavingsGoal`, `Broker`).
@@ -21,11 +26,11 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 - [x] Lógica de Balance Continuo Splitwise (50/50) y liquidaciones parciales/totales (`SETTLEMENT`).
 - [x] Endpoints CRUD para Reglas de Automapeo (`CategoryMapping`) con soporte `PUT` y `DELETE`.
 - [x] Calculadora de Fondo de Emergencia y estimación de gastos fijos.
-- [x] Suite de pruebas automatizadas con Pytest (100% pasando, 10 tests).
+- [x] Suite de pruebas automatizadas con Pytest (100% pasando).
 
 ---
 
-## ✅ Fase 3: Integración Frontend, Resumen & Balance (COMPLETADO)
+## ✅ Fase 3: Integración Frontend, Resumen & Balance (COMPLETADO Y VALIDADO)
 - [x] Configuración de `@tanstack/react-query` v5 para gestión de estado de servidor y caché en la SPA React.
 - [x] Dashboard de Finanzas con selector de vista **Hogar Completo** (3 cols) vs **Vista Individual** (4 cols con 50/50 shared imputation e inline Reintegros `Pagado - Ingresado`).
 - [x] Gráfico de evolución mensual por categoría con ordenamiento por volumen y toggle en tiempo real entre **Barras Apiladas (Stacked)** y **Barras Agrupadas (Grouped)**.
@@ -36,20 +41,33 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 ---
 
-## ✅ Fase 4: Módulo de Inventario & Gestión del Hogar (COMPLETADO)
+## 🟡 Fase 4: Módulo de Inventario & Gestión del Hogar (IMPLEMENTADO - PENDIENTE DE VALIDACIÓN POR USUARIO)
 - [x] Modelado del esquema PostgreSQL `inventario` (`locations`, `categories`, `items`, `stock_logs`).
 - [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtros y ajuste rápido de stock.
 - [x] Vinculación con lista de compras mediante *"Sugerir por Stock Bajo"*.
 - [x] **Gestión del Hogar (`HogarPage.tsx`)**:
   - Configurador de color de avatar por usuario con iniciales ("P", "M").
-  - CRUD completo de Categorías con bloques de color identificadores (removiendo emojis).
+  - CRUD completo de Categorías con bloques de color identificadores.
   - Sección interactiva de Tipos de Gastos con distintivo `🔒 Reglas de Sistema Fijas`.
   - Gestor avanzado de Reglas de Automapeo con buscador por palabra clave, filtros por categoría/tipo y ordenamiento.
   - Ancho de contenedor extendido (`max-w-[1750px]`) optimizado para monitores 1920x1080.
 
 ---
 
-## 🔮 Fase 5: Inversiones, Ahorros & Despliegue en Raspberry Pi 5
-- [ ] Vista enriquecida de Inversiones y Ahorros (Metas de ahorro, FCI, Cedears, Crypto).
+## 🟡 Fase 5: Inversiones, Ahorros, Títulos & Cotizaciones (IMPLEMENTADO - PENDIENTE DE VALIDACIÓN POR USUARIO)
+- [x] Registro de Decisión de Arquitectura y Diseño de Dominio ([ADR 0003](docs/adr/0003-inversiones-y-ahorro-domain-design.md)).
+- [x] Migraciones Alembic Multi-esquema Idempotentes:
+  - Migración `0004_quotes_and_broker_goals` (estándar Alembic-only, `revision_id <= 32` caracteres).
+  - Migración `0005_nullable_goal_contrib_acc` (hace opcional la columna `account_id` para permitir aportes a metas desacoplados de cuentas bancarias).
+- [x] Modelo y Endpoints Backend para Histórico de Cotizaciones (`CurrencyQuote` en `/api/v1/finanzas/currency-quotes`).
+- [x] Modelo y Endpoints Backend para Títulos, CEDEARs, Acciones y FCI con CRUD completo (`InvestmentAsset` en `/api/v1/finanzas/investments/assets`).
+- [x] Endpoints Backend para Metas de Ahorro y Brokers con CRUD completo (`/api/v1/finanzas/savings/goals`, `/api/v1/finanzas/investments/brokers`).
+- [x] Interfaz SPA React en `InversionesPage.tsx`:
+  - Componente de gráfico de dona/torta reutilizable `BrokerDistributionPieChart.tsx` (1 columna).
+  - Tabla de Títulos & Fondos FCI con modal de creación/edición (`NewInvestmentAssetModal.tsx`) y cálculo de ingresos proyectados.
+  - Metas de ahorro desacopladas con modal de edición (`NewSavingsGoalModal.tsx`) y botón de eliminación.
+  - Modal de operaciones en Broker (`BrokerTxModal.tsx`) con enums corregidos (`DEPOSIT`, `WITHDRAW`, `BUY_SIMPLE`, `SELL_SIMPLE`, `FCI_SUBSCRIBE`, `FCI_REDEEM`).
+  - CRUD e historial de cotizaciones de divisas y crypto (`USD_MEP`, `USD_BLUE`, `USDT`, `BTC`).
 - [ ] Configuración final en Raspberry Pi 5 con Nginx Proxy Manager y certificados SSL.
 - [ ] Monitoreo de memoria RAM y backup automático de base de datos.
+
