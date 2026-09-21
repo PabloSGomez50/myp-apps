@@ -45,12 +45,6 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
         schema="finanzas",
     )
 
@@ -135,12 +129,6 @@ def upgrade() -> None:
         sa.Column("fecha", sa.DateTime(timezone=True), nullable=False),
         sa.Column(
             "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,

@@ -18,25 +18,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "supermarkets",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-        schema="finanzas",
+    op.execute(
+        "ALTER TABLE finanzas.supermarkets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL;"
     )
-    op.add_column(
-        "food_price_history",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-        schema="finanzas",
+    op.execute(
+        "ALTER TABLE finanzas.food_price_history ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL;"
     )
 
 
