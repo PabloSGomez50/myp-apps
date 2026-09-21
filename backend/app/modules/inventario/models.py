@@ -8,6 +8,7 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.modules.core.models import User
 from app.shared.base_model import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -108,3 +109,5 @@ class StockLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     fecha: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
+
+    user: Mapped["User | None"] = relationship("User", lazy="selectin", foreign_keys=[user_id])

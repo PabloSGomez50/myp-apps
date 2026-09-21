@@ -28,10 +28,12 @@ from app.modules.finanzas.schemas import (
     CurrencyQuoteCreate,
     CurrencyQuoteOut,
     EmergencyFundCalculationOut,
+    FoodPriceHistoryOut,
     GoalContributionCreate,
     InvestmentAssetCreate,
     InvestmentAssetOut,
     InvestmentAssetUpdate,
+    PostCheckoutSyncRequest,
     SavingsGoalCreate,
     SavingsGoalOut,
     SavingsGoalUpdate,
@@ -39,8 +41,13 @@ from app.modules.finanzas.schemas import (
     ShoppingCheckoutRequest,
     ShoppingItemCreate,
     ShoppingItemOut,
+    ShoppingItemUpdate,
     ShoppingListCreate,
     ShoppingListOut,
+    ShoppingListUpdate,
+    SupermarketCreate,
+    SupermarketOut,
+    SupermarketUpdate,
     TransactionBulkDelete,
     TransactionCreate,
     TransactionOut,
@@ -272,8 +279,90 @@ async def get_couple_balance(
 
 
 # ==============================================================================
+# Supermarkets & Stores
+# ==============================================================================
+@finanzas_router.get(
+    "/supermarkets", response_model=list[SupermarketOut], status_code=status.HTTP_200_OK
+)
+async def get_supermarkets(
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    supermarkets = await FinanzasService.get_supermarkets(db, household_id)
+    return [SupermarketOut.model_validate(s) for s in supermarkets]
+
+
+@finanzas_router.post(
+    "/supermarkets", response_model=SupermarketOut, status_code=status.HTTP_201_CREATED
+)
+async def create_supermarket(
+    data: SupermarketCreate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    supermarket = await FinanzasService.create_supermarket(db, household_id, data)
+    return SupermarketOut.model_validate(supermarket)
+
+
+@finanzas_router.put(
+    "/supermarkets/{id}", response_model=SupermarketOut, status_code=status.HTTP_200_OK
+)
+async def update_supermarket(
+    id: uuid.UUID,
+    data: SupermarketUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    supermarket = await FinanzasService.update_supermarket(db, id, household_id, data)
+    return SupermarketOut.model_validate(supermarket)
+
+
+@finanzas_router.delete("/supermarkets/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_supermarket(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    await FinanzasService.delete_supermarket(db, id, household_id)
+    return None
+
+
+# ==============================================================================
+# Food Price History
+# ==============================================================================
+@finanzas_router.get(
+    "/food-price-history", response_model=list[FoodPriceHistoryOut], status_code=status.HTTP_200_OK
+)
+async def get_food_price_history(
+    item_nombre: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    history = await FinanzasService.get_food_price_history(db, household_id, item_nombre, limit)
+    return [FoodPriceHistoryOut.model_validate(h) for h in history]
+
+
+# ==============================================================================
 # Shopping Lists & Discounts
 # ==============================================================================
+@finanzas_router.get(
+    "/shopping/lists", response_model=list[ShoppingListOut], status_code=status.HTTP_200_OK
+)
+async def get_shopping_lists(
+    estado: str | None = Query(None),
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.get_shopping_lists(db, household_id, estado)
+
+
 @finanzas_router.post(
     "/shopping/lists", response_model=ShoppingListOut, status_code=status.HTTP_201_CREATED
 )
@@ -283,8 +372,7 @@ async def create_shopping_list(
     db: AsyncSession = Depends(get_db),
 ):
     _, household_id = current_auth
-    shopping_list = await FinanzasService.create_shopping_list(db, household_id, data)
-    return await FinanzasService.get_shopping_list_details(db, shopping_list.id)
+    return await FinanzasService.create_shopping_list(db, household_id, data)
 
 
 @finanzas_router.get(
@@ -296,6 +384,30 @@ async def get_shopping_list(
     db: AsyncSession = Depends(get_db),
 ):
     return await FinanzasService.get_shopping_list_details(db, id)
+
+
+@finanzas_router.put(
+    "/shopping/lists/{id}", response_model=ShoppingListOut, status_code=status.HTTP_200_OK
+)
+async def update_shopping_list(
+    id: uuid.UUID,
+    data: ShoppingListUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.update_shopping_list(db, id, household_id, data)
+
+
+@finanzas_router.delete("/shopping/lists/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_shopping_list(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    await FinanzasService.delete_shopping_list(db, id, household_id)
+    return None
 
 
 @finanzas_router.post(
@@ -315,6 +427,33 @@ async def add_shopping_item(
     return item_out
 
 
+@finanzas_router.put(
+    "/shopping/items/{id}",
+    response_model=ShoppingItemOut,
+    status_code=status.HTTP_200_OK,
+)
+async def update_shopping_item(
+    id: uuid.UUID,
+    data: ShoppingItemUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await FinanzasService.update_shopping_item(db, id, data)
+    list_details = await FinanzasService.get_shopping_list_details(db, item.list_id)
+    item_out = next((it for it in list_details.items if it.id == item.id), None)
+    return item_out
+
+
+@finanzas_router.delete("/shopping/items/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_shopping_item(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    await FinanzasService.delete_shopping_item(db, id)
+    return None
+
+
 @finanzas_router.post(
     "/shopping/lists/{id}/checkout", response_model=TransactionOut, status_code=status.HTTP_200_OK
 )
@@ -326,6 +465,18 @@ async def checkout_shopping_list(
 ):
     user, household_id = current_auth
     return await FinanzasService.checkout_shopping_list(db, user.id, household_id, id, data)
+
+
+@finanzas_router.post(
+    "/shopping/post-checkout-sync", status_code=status.HTTP_200_OK
+)
+async def post_checkout_sync_inventory(
+    data: PostCheckoutSyncRequest,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    user, household_id = current_auth
+    return await FinanzasService.post_checkout_sync_inventory(db, user.id, household_id, data)
 
 
 # ==============================================================================

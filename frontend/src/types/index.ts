@@ -209,6 +209,46 @@ export interface CoupleBalance {
   summary_text: string;
 }
 
+export interface Supermarket {
+  id: string;
+  household_id: string;
+  nombre: string;
+  icono: string;
+  color: string;
+  descuento_habitual_porcentaje: number;
+  dia_promocion_habitual?: string | null;
+  created_at?: string;
+}
+
+export interface SupermarketCreate {
+  nombre: string;
+  icono?: string;
+  color?: string;
+  descuento_habitual_porcentaje?: number;
+  dia_promocion_habitual?: string | null;
+}
+
+export interface SupermarketUpdate {
+  nombre?: string;
+  icono?: string;
+  color?: string;
+  descuento_habitual_porcentaje?: number;
+  dia_promocion_habitual?: string | null;
+}
+
+export interface FoodPriceHistory {
+  id: string;
+  household_id: string;
+  supermarket_id?: string | null;
+  inventory_item_id?: string | null;
+  item_nombre: string;
+  precio_unitario: number;
+  descuento_aplicado: number;
+  precio_efectivo: number;
+  fecha: string;
+  supermarket?: Supermarket | null;
+}
+
 export interface ShoppingItem {
   id: string;
   list_id: string;
@@ -219,18 +259,58 @@ export interface ShoppingItem {
   descuento_aplicado_porcentaje: number;
   precio_final_calculado: number;
   comprado: boolean;
+  inventory_item_id?: string | null;
 }
 
 export interface ShoppingList {
   id: string;
   household_id: string;
   nombre: string;
+  estado?: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
   descuento_general_porcentaje: number;
+  supermarket_id?: string | null;
+  supermarket?: Supermarket | null;
   is_completed: boolean;
   total_con_descuentos: number;
   division_50_50: number;
   items: ShoppingItem[];
   created_at: string;
+}
+
+export interface ShoppingListCreate {
+  nombre: string;
+  descuento_general_porcentaje?: number;
+  supermarket_id?: string | null;
+}
+
+export interface ShoppingListUpdate {
+  nombre?: string;
+  descuento_general_porcentaje?: number;
+  supermarket_id?: string | null;
+  estado?: string;
+  is_completed?: boolean;
+}
+
+export interface ShoppingCheckoutRequest {
+  user_id?: string | null;
+  account_id?: string | null;
+  category_id: string;
+  descripcion?: string;
+}
+
+export interface PostCheckoutSyncItem {
+  shopping_item_id: string;
+  inventory_item_id?: string | null;
+  create_new?: boolean;
+  nombre_item: string;
+  cantidad: number;
+  ubicacion_id?: string | null;
+  categoria_id?: string | null;
+  stock_minimo?: number;
+}
+
+export interface PostCheckoutSyncRequest {
+  items: PostCheckoutSyncItem[];
 }
 
 export interface GoalContribution {
@@ -247,6 +327,8 @@ export interface GoalContribution {
 export interface SavingsGoal {
   id: string;
   household_id: string;
+  user_id?: string | null;
+  es_personal?: boolean;
   nombre: string;
   monto_objetivo: number;
   monto_acumulado: number;
@@ -312,6 +394,7 @@ export interface Location {
   household_id: string;
   nombre: string;
   descripcion?: string | null;
+  item_count?: number;
   created_at: string;
 }
 
@@ -338,6 +421,37 @@ export interface InventoryItem {
   location?: Location | null;
   category?: InventoryCategory | null;
   created_at: string;
+}
+
+export type StockMovementType = 'REPLENISHMENT' | 'CONSUMPTION' | 'ADJUSTMENT';
+
+export interface StockLogUser {
+  id: string;
+  nombre: string;
+  color_avatar: string;
+}
+
+export interface StockLog {
+  id: string;
+  item_id: string;
+  user_id: string;
+  user?: StockLogUser | null;
+  tipo_movimiento: StockMovementType;
+  cantidad_cambio: number;
+  nota?: string | null;
+  fecha: string;
+}
+
+export interface SendToShoppingListItem {
+  item_id: string;
+  nombre: string;
+  cantidad: number;
+}
+
+export interface SendToShoppingListRequest {
+  shopping_list_id?: string | null;
+  shopping_list_name?: string | null;
+  items: SendToShoppingListItem[];
 }
 
 

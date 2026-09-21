@@ -184,6 +184,65 @@ class CoupleBalanceOut(BaseModel):
 
 
 # ==============================================================================
+# Supermarkets & Stores
+# ==============================================================================
+class SupermarketBase(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=100)
+    icono: str = Field(default="shopping-bag", max_length=50)
+    color: str = Field(default="emerald", max_length=50)
+    descuento_habitual_porcentaje: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    dia_promocion_habitual: str | None = Field(default=None, max_length=50)
+
+
+class SupermarketCreate(SupermarketBase):
+    pass
+
+
+class SupermarketUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=100)
+    icono: str | None = Field(default=None, max_length=50)
+    color: str | None = Field(default=None, max_length=50)
+    descuento_habitual_porcentaje: Decimal | None = Field(default=None, ge=0, le=100)
+    dia_promocion_habitual: str | None = Field(default=None, max_length=50)
+
+
+class SupermarketOut(SupermarketBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    created_at: datetime
+
+    @field_serializer("descuento_habitual_porcentaje", mode="plain", check_fields=False)
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
+
+
+# ==============================================================================
+# Food Price History
+# ==============================================================================
+class FoodPriceHistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    supermarket_id: uuid.UUID | None = None
+    inventory_item_id: uuid.UUID | None = None
+    item_nombre: str
+    precio_unitario: Decimal
+    descuento_aplicado: Decimal
+    precio_efectivo: Decimal
+    fecha: datetime
+    supermarket: SupermarketOut | None = None
+
+    @field_serializer(
+        "precio_unitario", "descuento_aplicado", "precio_efectivo", mode="plain", check_fields=False
+    )
+    def serialize_decimal(self, v: Decimal) -> float:
+        return float(v) if v is not None else 0.0
+
+
+# ==============================================================================
 # Shopping Lists & Discounts
 # ==============================================================================
 class ShoppingItemBase(BaseModel):
@@ -192,6 +251,7 @@ class ShoppingItemBase(BaseModel):
     cantidad: int = Field(default=1, ge=1)
     descuento_especifico_porcentaje: Decimal | None = Field(default=None, ge=0, le=100)
     comprado: bool = False
+    inventory_item_id: uuid.UUID | None = None
 
 
 class ShoppingItemCreate(ShoppingItemBase):
@@ -204,6 +264,7 @@ class ShoppingItemUpdate(BaseModel):
     cantidad: int | None = None
     descuento_especifico_porcentaje: Decimal | None = None
     comprado: bool | None = None
+    inventory_item_id: uuid.UUID | None = None
 
 
 class ShoppingItemOut(ShoppingItemBase):
@@ -218,10 +279,19 @@ class ShoppingItemOut(ShoppingItemBase):
 class ShoppingListBase(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=100)
     descuento_general_porcentaje: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    supermarket_id: uuid.UUID | None = None
 
 
 class ShoppingListCreate(ShoppingListBase):
     pass
+
+
+class ShoppingListUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=100)
+    descuento_general_porcentaje: Decimal | None = Field(default=None, ge=0, le=100)
+    supermarket_id: uuid.UUID | None = None
+    estado: str | None = Field(default=None, max_length=20)
+    is_completed: bool | None = None
 
 
 class ShoppingListOut(ShoppingListBase):
@@ -229,17 +299,35 @@ class ShoppingListOut(ShoppingListBase):
 
     id: uuid.UUID
     household_id: uuid.UUID
+    estado: str = "ACTIVE"
     is_completed: bool
     total_con_descuentos: Decimal = Decimal("0.00")
     division_50_50: Decimal = Decimal("0.00")
+    supermarket: SupermarketOut | None = None
     items: list[ShoppingItemOut] = []
     created_at: datetime
 
 
 class ShoppingCheckoutRequest(BaseModel):
-    account_id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    account_id: uuid.UUID | None = None
     category_id: uuid.UUID
     descripcion: str = "Compra de Supermercado"
+
+
+class PostCheckoutSyncItem(BaseModel):
+    shopping_item_id: uuid.UUID
+    inventory_item_id: uuid.UUID | None = None
+    create_new: bool = False
+    nombre_item: str
+    cantidad: int = Field(default=1, ge=1)
+    ubicacion_id: uuid.UUID | None = None
+    categoria_id: uuid.UUID | None = None
+    stock_minimo: int = Field(default=1, ge=0)
+
+
+class PostCheckoutSyncRequest(BaseModel):
+    items: list[PostCheckoutSyncItem]
 
 
 # ==============================================================================
@@ -250,6 +338,8 @@ class SavingsGoalBase(BaseModel):
     monto_objetivo: Decimal = Field(..., gt=0)
     moneda: str = Field(default="ARS", max_length=10)
     fecha_limite: date | None = None
+    user_id: uuid.UUID | None = None
+    es_personal: bool = False
 
 
 class SavingsGoalCreate(SavingsGoalBase):
@@ -261,6 +351,8 @@ class SavingsGoalUpdate(BaseModel):
     monto_objetivo: Decimal | None = Field(default=None, gt=0)
     moneda: str | None = Field(default=None, max_length=10)
     fecha_limite: date | None = None
+    user_id: uuid.UUID | None = None
+    es_personal: bool | None = None
 
 
 class GoalContributionCreate(BaseModel):
@@ -292,6 +384,8 @@ class SavingsGoalOut(SavingsGoalBase):
 
     id: uuid.UUID
     household_id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    es_personal: bool = False
     monto_acumulado: Decimal
     porcentaje_avance: Decimal = Decimal("0.00")
     contributions: list[GoalContributionOut] = []

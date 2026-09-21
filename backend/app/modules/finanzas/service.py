@@ -19,11 +19,13 @@ from app.modules.finanzas.models import (
     CategoryMapping,
     CurrencyQuote,
     ExpenseTypeEnum,
+    FoodPriceHistory,
     GoalContribution,
     InvestmentAsset,
     SavingsGoal,
     ShoppingItem,
     ShoppingList,
+    Supermarket,
     Transaction,
     TransactionTypeEnum,
 )
@@ -46,10 +48,12 @@ from app.modules.finanzas.schemas import (
     CsvPreviewRow,
     CurrencyQuoteCreate,
     EmergencyFundCalculationOut,
+    FoodPriceHistoryOut,
     GoalContributionCreate,
     GoalContributionOut,
     InvestmentAssetCreate,
     InvestmentAssetUpdate,
+    PostCheckoutSyncRequest,
     SavingsGoalCreate,
     SavingsGoalOut,
     SavingsGoalUpdate,
@@ -57,14 +61,20 @@ from app.modules.finanzas.schemas import (
     ShoppingCheckoutRequest,
     ShoppingItemCreate,
     ShoppingItemOut,
+    ShoppingItemUpdate,
     ShoppingListCreate,
     ShoppingListOut,
+    ShoppingListUpdate,
+    SupermarketCreate,
+    SupermarketOut,
+    SupermarketUpdate,
     TransactionBulkDelete,
     TransactionCreate,
     TransactionOut,
     TransactionSplitCreate,
     TransactionUpdate,
 )
+from app.modules.inventario.models import InventoryItem, MovementTypeEnum, StockLog
 
 
 class FinanzasService:
@@ -552,21 +562,164 @@ class FinanzasService:
         )
 
     # ==========================================================================
+    # Supermarkets & Stores
+    # ==========================================================================
+    @staticmethod
+    async def create_supermarket(
+        db: AsyncSession, household_id: uuid.UUID, data: SupermarketCreate
+    ) -> Supermarket:
+        supermarket = Supermarket(
+            household_id=household_id,
+            nombre=data.nombre.strip(),
+            icono=data.icono,
+            color=data.color,
+            descuento_habitual_porcentaje=data.descuento_habitual_porcentaje,
+            dia_promocion_habitual=data.dia_promocion_habitual,
+        )
+        db.add(supermarket)
+        await db.commit()
+        await db.refresh(supermarket)
+        return supermarket
+
+    @staticmethod
+    async def get_supermarkets(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> list[Supermarket]:
+        result = await db.execute(
+            select(Supermarket)
+            .where(Supermarket.household_id == household_id)
+            .order_by(Supermarket.nombre.asc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def update_supermarket(
+        db: AsyncSession, supermarket_id: uuid.UUID, household_id: uuid.UUID, data: SupermarketUpdate
+    ) -> Supermarket:
+        supermarket = await db.get(Supermarket, supermarket_id)
+        if not supermarket or supermarket.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Supermercado no encontrado."
+            )
+
+        update_dict = data.model_dump(exclude_unset=True)
+        for key, value in update_dict.items():
+            if isinstance(value, str):
+                value = value.strip()
+            setattr(supermarket, key, value)
+
+        await db.commit()
+        await db.refresh(supermarket)
+        return supermarket
+
+    @staticmethod
+    async def delete_supermarket(
+        db: AsyncSession, supermarket_id: uuid.UUID, household_id: uuid.UUID
+    ) -> bool:
+        supermarket = await db.get(Supermarket, supermarket_id)
+        if not supermarket or supermarket.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Supermercado no encontrado."
+            )
+
+        await db.delete(supermarket)
+        await db.commit()
+        return True
+
+    # ==========================================================================
+    # Food Price History
+    # ==========================================================================
+    @staticmethod
+    async def get_food_price_history(
+        db: AsyncSession,
+        household_id: uuid.UUID,
+        item_nombre: str | None = None,
+        limit: int = 100,
+    ) -> list[FoodPriceHistory]:
+        query = (
+            select(FoodPriceHistory)
+            .options(selectinload(FoodPriceHistory.supermarket))
+            .where(FoodPriceHistory.household_id == household_id)
+            .order_by(FoodPriceHistory.fecha.desc())
+        )
+        if item_nombre:
+            query = query.where(FoodPriceHistory.item_nombre.ilike(f"%{item_nombre.strip()}%"))
+
+        if limit > 0:
+            query = query.limit(limit)
+
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    # ==========================================================================
     # Shopping Lists & Discounts
     # ==========================================================================
     @staticmethod
     async def create_shopping_list(
         db: AsyncSession, household_id: uuid.UUID, data: ShoppingListCreate
-    ) -> ShoppingList:
+    ) -> ShoppingListOut:
         shopping_list = ShoppingList(
             household_id=household_id,
-            nombre=data.nombre,
+            nombre=data.nombre.strip(),
             descuento_general_porcentaje=data.descuento_general_porcentaje,
+            supermarket_id=data.supermarket_id,
         )
         db.add(shopping_list)
         await db.commit()
-        await db.refresh(shopping_list)
-        return shopping_list
+        return await FinanzasService.get_shopping_list_details(db, shopping_list.id)
+
+    @staticmethod
+    async def get_shopping_lists(
+        db: AsyncSession, household_id: uuid.UUID, estado: str | None = None
+    ) -> list[ShoppingListOut]:
+        query = (
+            select(ShoppingList)
+            .where(ShoppingList.household_id == household_id)
+            .order_by(ShoppingList.created_at.desc())
+        )
+        if estado:
+            query = query.where(ShoppingList.estado == estado)
+
+        result = await db.execute(query)
+        lists = list(result.scalars().all())
+
+        out_lists = []
+        for l in lists:
+            out_lists.append(await FinanzasService.get_shopping_list_details(db, l.id))
+        return out_lists
+
+    @staticmethod
+    async def update_shopping_list(
+        db: AsyncSession, list_id: uuid.UUID, household_id: uuid.UUID, data: ShoppingListUpdate
+    ) -> ShoppingListOut:
+        shopping_list = await db.get(ShoppingList, list_id)
+        if not shopping_list or shopping_list.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Lista de compras no encontrada."
+            )
+
+        update_dict = data.model_dump(exclude_unset=True)
+        for key, value in update_dict.items():
+            if isinstance(value, str):
+                value = value.strip()
+            setattr(shopping_list, key, value)
+
+        await db.commit()
+        return await FinanzasService.get_shopping_list_details(db, list_id)
+
+    @staticmethod
+    async def delete_shopping_list(
+        db: AsyncSession, list_id: uuid.UUID, household_id: uuid.UUID
+    ) -> bool:
+        shopping_list = await db.get(ShoppingList, list_id)
+        if not shopping_list or shopping_list.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Lista de compras no encontrada."
+            )
+
+        await db.delete(shopping_list)
+        await db.commit()
+        return True
 
     @staticmethod
     async def add_shopping_item(
@@ -574,11 +727,12 @@ class FinanzasService:
     ) -> ShoppingItem:
         item = ShoppingItem(
             list_id=list_id,
-            nombre=data.nombre,
+            nombre=data.nombre.strip(),
             precio_unitario=data.precio_unitario,
             cantidad=data.cantidad,
             descuento_especifico_porcentaje=data.descuento_especifico_porcentaje,
             comprado=data.comprado,
+            inventory_item_id=data.inventory_item_id,
         )
         db.add(item)
         await db.commit()
@@ -586,10 +740,45 @@ class FinanzasService:
         return item
 
     @staticmethod
+    async def update_shopping_item(
+        db: AsyncSession, item_id: uuid.UUID, data: ShoppingItemUpdate
+    ) -> ShoppingItem:
+        item = await db.get(ShoppingItem, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Ítem de lista no encontrado."
+            )
+
+        update_dict = data.model_dump(exclude_unset=True)
+        for key, value in update_dict.items():
+            if isinstance(value, str):
+                value = value.strip()
+            setattr(item, key, value)
+
+        await db.commit()
+        await db.refresh(item)
+        return item
+
+    @staticmethod
+    async def delete_shopping_item(db: AsyncSession, item_id: uuid.UUID) -> bool:
+        item = await db.get(ShoppingItem, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Ítem de lista no encontrado."
+            )
+
+        await db.delete(item)
+        await db.commit()
+        return True
+
+    @staticmethod
     async def get_shopping_list_details(db: AsyncSession, list_id: uuid.UUID) -> ShoppingListOut:
         result = await db.execute(
             select(ShoppingList)
-            .options(selectinload(ShoppingList.items))
+            .options(
+                selectinload(ShoppingList.items),
+                selectinload(ShoppingList.supermarket),
+            )
             .where(ShoppingList.id == list_id)
         )
         shopping_list = result.scalar_one_or_none()
@@ -622,6 +811,7 @@ class FinanzasService:
                     cantidad=item.cantidad,
                     descuento_especifico_porcentaje=item.descuento_especifico_porcentaje,
                     comprado=item.comprado,
+                    inventory_item_id=item.inventory_item_id,
                     descuento_aplicado_porcentaje=discount,
                     precio_final_calculado=final_price,
                 )
@@ -631,7 +821,10 @@ class FinanzasService:
             id=shopping_list.id,
             household_id=shopping_list.household_id,
             nombre=shopping_list.nombre,
+            estado=shopping_list.estado,
             descuento_general_porcentaje=shopping_list.descuento_general_porcentaje,
+            supermarket_id=shopping_list.supermarket_id,
+            supermarket=SupermarketOut.model_validate(shopping_list.supermarket) if shopping_list.supermarket else None,
             is_completed=shopping_list.is_completed,
             total_con_descuentos=total_con_descuentos,
             division_50_50=total_con_descuentos / Decimal("2.00"),
@@ -653,24 +846,108 @@ class FinanzasService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="La lista ya ha sido finalizada."
             )
 
+        payer_id = data.user_id if data.user_id else user_id
+
         # Create 50/50 Shared Expense Transaction
         tx_data = TransactionSplitCreate(
             account_id=data.account_id,
+            user_id=payer_id,
             category_id=data.category_id,
             monto=list_details.total_con_descuentos,
             moneda="ARS",
             descripcion=f"{data.descripcion} ({list_details.nombre})",
             fecha=datetime.now(UTC),
         )
-        tx = await FinanzasService.create_split_transaction(db, user_id, household_id, tx_data)
+        tx = await FinanzasService.create_split_transaction(db, payer_id, household_id, tx_data)
 
-        # Mark shopping list as completed
+        # Record Food Price History entries for bought items with price > 0
         list_obj = await db.get(ShoppingList, list_id)
         if list_obj:
             list_obj.is_completed = True
+            list_obj.estado = "COMPLETED"
+
+            items_res = await db.execute(
+                select(ShoppingItem).where(ShoppingItem.list_id == list_id)
+            )
+            items = list(items_res.scalars().all())
+
+            for item in items:
+                if item.precio_unitario > Decimal("0.00"):
+                    discount = (
+                        item.descuento_especifico_porcentaje
+                        if item.descuento_especifico_porcentaje is not None
+                        else list_obj.descuento_general_porcentaje
+                    )
+                    effective_price = item.precio_unitario * (Decimal("1.00") - (discount / Decimal("100.00")))
+
+                    history_entry = FoodPriceHistory(
+                        household_id=household_id,
+                        supermarket_id=list_obj.supermarket_id,
+                        inventory_item_id=item.inventory_item_id,
+                        item_nombre=item.nombre,
+                        precio_unitario=item.precio_unitario,
+                        descuento_aplicado=discount,
+                        precio_efectivo=effective_price,
+                        fecha=datetime.now(UTC),
+                    )
+                    db.add(history_entry)
+
             await db.commit()
 
         return TransactionOut.model_validate(tx)
+
+    @staticmethod
+    async def post_checkout_sync_inventory(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        household_id: uuid.UUID,
+        data: PostCheckoutSyncRequest,
+    ) -> dict:
+        synced_count = 0
+        for sync_item in data.items:
+            if sync_item.inventory_item_id:
+                inv_item = await db.get(InventoryItem, sync_item.inventory_item_id)
+                if inv_item and inv_item.household_id == household_id:
+                    inv_item.stock_actual += Decimal(sync_item.cantidad)
+
+                    log = StockLog(
+                        item_id=inv_item.id,
+                        user_id=user_id,
+                        tipo_movimiento=MovementTypeEnum.REPLENISHMENT,
+                        cantidad_cambio=Decimal(sync_item.cantidad),
+                        nota="Ingresado desde checkout de lista de compras",
+                    )
+                    db.add(log)
+                    synced_count += 1
+            elif sync_item.create_new:
+                new_inv_item = InventoryItem(
+                    household_id=household_id,
+                    nombre=sync_item.nombre_item.strip(),
+                    stock_actual=Decimal(sync_item.cantidad),
+                    stock_minimo=Decimal(sync_item.stock_minimo),
+                    location_id=sync_item.ubicacion_id,
+                    category_id=sync_item.categoria_id,
+                    unidad_medida="unidades",
+                )
+                db.add(new_inv_item)
+                await db.flush()
+
+                shop_item = await db.get(ShoppingItem, sync_item.shopping_item_id)
+                if shop_item:
+                    shop_item.inventory_item_id = new_inv_item.id
+
+                log = StockLog(
+                    item_id=new_inv_item.id,
+                    user_id=user_id,
+                    tipo_movimiento=MovementTypeEnum.REPLENISHMENT,
+                    cantidad_cambio=Decimal(sync_item.cantidad),
+                    nota="Creado desde checkout de lista de compras",
+                )
+                db.add(log)
+                synced_count += 1
+
+        await db.commit()
+        return {"synced_count": synced_count, "message": "Inventario sincronizado exitosamente."}
 
     # ==========================================================================
     # Savings & Emergency Fund
@@ -681,9 +958,11 @@ class FinanzasService:
     ) -> SavingsGoal:
         goal = SavingsGoal(
             household_id=household_id,
-            nombre=data.nombre,
+            user_id=data.user_id if data.es_personal else None,
+            es_personal=data.es_personal,
+            nombre=data.nombre.strip(),
             monto_objetivo=data.monto_objetivo,
-            moneda=data.moneda,
+            moneda=data.moneda.strip().upper(),
             fecha_limite=data.fecha_limite,
         )
         db.add(goal)
@@ -707,6 +986,11 @@ class FinanzasService:
             goal.moneda = data.moneda.strip().upper()
         if data.fecha_limite is not None:
             goal.fecha_limite = data.fecha_limite
+        if data.es_personal is not None:
+            goal.es_personal = data.es_personal
+            goal.user_id = data.user_id if data.es_personal else None
+        elif data.user_id is not None:
+            goal.user_id = data.user_id
 
         await db.commit()
 
@@ -726,6 +1010,8 @@ class FinanzasService:
         return SavingsGoalOut(
             id=reloaded_goal.id,
             household_id=reloaded_goal.household_id,
+            user_id=reloaded_goal.user_id,
+            es_personal=reloaded_goal.es_personal,
             nombre=reloaded_goal.nombre,
             monto_objetivo=reloaded_goal.monto_objetivo,
             monto_acumulado=reloaded_goal.monto_acumulado,
@@ -766,6 +1052,8 @@ class FinanzasService:
                 SavingsGoalOut(
                     id=g.id,
                     household_id=g.household_id,
+                    user_id=g.user_id,
+                    es_personal=g.es_personal,
                     nombre=g.nombre,
                     monto_objetivo=g.monto_objetivo,
                     monto_acumulado=g.monto_acumulado,
@@ -786,10 +1074,14 @@ class FinanzasService:
         if not goal:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meta no encontrada.")
 
+        source_currency = "ARS"
         if data.account_id:
             account = await db.get(Account, data.account_id)
             if account:
                 account.saldo_actual -= data.monto
+                source_currency = account.moneda
+        elif data.broker_id:
+            source_currency = "USD"
 
         contribution = GoalContribution(
             goal_id=goal_id,
@@ -801,8 +1093,18 @@ class FinanzasService:
         )
         db.add(contribution)
 
-        # Add to goal
-        goal.monto_acumulado += data.monto
+        # Convert currency if source currency differs from goal currency
+        monto_para_meta = data.monto
+        if source_currency.upper() == "USD" and goal.moneda.upper() == "ARS":
+            latest_quotes = await FinanzasService.get_latest_currency_quotes(db, goal.household_id)
+            usd_blue_rate = latest_quotes.get("USD_BLUE") or Decimal("1350.00")
+            monto_para_meta = data.monto * usd_blue_rate
+        elif source_currency.upper() == "ARS" and goal.moneda.upper() == "USD":
+            latest_quotes = await FinanzasService.get_latest_currency_quotes(db, goal.household_id)
+            usd_blue_rate = latest_quotes.get("USD_BLUE") or Decimal("1350.00")
+            monto_para_meta = data.monto / usd_blue_rate
+
+        goal.monto_acumulado += monto_para_meta
 
         await db.commit()
 
@@ -822,6 +1124,8 @@ class FinanzasService:
         return SavingsGoalOut(
             id=reloaded_goal.id,
             household_id=reloaded_goal.household_id,
+            user_id=reloaded_goal.user_id,
+            es_personal=reloaded_goal.es_personal,
             nombre=reloaded_goal.nombre,
             monto_objetivo=reloaded_goal.monto_objetivo,
             monto_acumulado=reloaded_goal.monto_acumulado,
@@ -841,7 +1145,8 @@ class FinanzasService:
             select(Category.id).where(
                 Category.household_id == household_id,
                 Category.tipo_gasto.in_(
-                    [ExpenseTypeEnum.FIXED_HOUSEHOLD, ExpenseTypeEnum.FIXED_PERSONAL]
+                    [ExpenseTypeEnum.FIXED_HOUSEHOLD, ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+                     ExpenseTypeEnum.FIXED_PERSONAL, ExpenseTypeEnum.VARIABLE_PERSONAL]
                 ),
             )
         )
@@ -872,7 +1177,15 @@ class FinanzasService:
             )
         )
         em_goal = em_goal_res.scalar_one_or_none()
-        ahorro_actual = em_goal.monto_acumulado if em_goal else Decimal("0.00")
+        ahorro_actual = Decimal("0.00")
+        if em_goal:
+            if em_goal.moneda.upper() == "USD":
+                latest_quotes = await FinanzasService.get_latest_currency_quotes(db, household_id)
+                usd_blue_rate = latest_quotes.get("USD_BLUE") or Decimal("1350.00")
+                ahorro_actual = em_goal.monto_acumulado * usd_blue_rate
+            else:
+                ahorro_actual = em_goal.monto_acumulado
+
         cobertura_pct = (
             (ahorro_actual / meta_sugerida * 100) if meta_sugerida > 0 else Decimal("0.00")
         )

@@ -9,7 +9,15 @@ import {
   Transaction,
   CoupleBalance,
   ShoppingList,
+  ShoppingListCreate,
+  ShoppingListUpdate,
+  ShoppingCheckoutRequest,
   ShoppingItem,
+  Supermarket,
+  SupermarketCreate,
+  SupermarketUpdate,
+  FoodPriceHistory,
+  PostCheckoutSyncRequest,
   SavingsGoal,
   EmergencyFundCalculation,
   Broker,
@@ -20,6 +28,8 @@ import {
   Location,
   InventoryCategory,
   InventoryItem,
+  StockLog,
+  SendToShoppingListRequest,
   CategoryMapping,
   CsvParseResponse,
   BulkImportRequest,
@@ -297,17 +307,59 @@ export const finanzasApi = {
     return data;
   },
 
+  // Supermarkets & Stores
+  getSupermarkets: async (): Promise<Supermarket[]> => {
+    const { data } = await api.get<Supermarket[]>('/finanzas/supermarkets');
+    return data;
+  },
+
+  createSupermarket: async (supermarketData: SupermarketCreate): Promise<Supermarket> => {
+    const { data } = await api.post<Supermarket>('/finanzas/supermarkets', supermarketData);
+    return data;
+  },
+
+  updateSupermarket: async (id: string, supermarketData: SupermarketUpdate): Promise<Supermarket> => {
+    const { data } = await api.put<Supermarket>(`/finanzas/supermarkets/${id}`, supermarketData);
+    return data;
+  },
+
+  deleteSupermarket: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/supermarkets/${id}`);
+  },
+
+  // Food Price History
+  getFoodPriceHistory: async (itemNombre?: string): Promise<FoodPriceHistory[]> => {
+    const { data } = await api.get<FoodPriceHistory[]>('/finanzas/food-price-history', {
+      params: itemNombre ? { item_nombre: itemNombre } : {},
+    });
+    return data;
+  },
+
+  // Shopping Lists & Items
+  getShoppingLists: async (estado?: string): Promise<ShoppingList[]> => {
+    const { data } = await api.get<ShoppingList[]>('/finanzas/shopping/lists', {
+      params: estado ? { estado } : {},
+    });
+    return data;
+  },
+
   getShoppingList: async (id: string): Promise<ShoppingList> => {
     const { data } = await api.get<ShoppingList>(`/finanzas/shopping/lists/${id}`);
     return data;
   },
 
-  createShoppingList: async (listData: {
-    nombre: string;
-    descuento_general_porcentaje?: number;
-  }): Promise<ShoppingList> => {
+  createShoppingList: async (listData: ShoppingListCreate): Promise<ShoppingList> => {
     const { data } = await api.post<ShoppingList>('/finanzas/shopping/lists', listData);
     return data;
+  },
+
+  updateShoppingList: async (id: string, listData: ShoppingListUpdate): Promise<ShoppingList> => {
+    const { data } = await api.put<ShoppingList>(`/finanzas/shopping/lists/${id}`, listData);
+    return data;
+  },
+
+  deleteShoppingList: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/shopping/lists/${id}`);
   },
 
   addShoppingItem: async (
@@ -317,21 +369,42 @@ export const finanzasApi = {
       precio_unitario: number;
       cantidad: number;
       descuento_especifico_porcentaje?: number;
+      inventory_item_id?: string | null;
     }
   ): Promise<ShoppingItem> => {
     const { data } = await api.post<ShoppingItem>(`/finanzas/shopping/lists/${listId}/items`, itemData);
     return data;
   },
 
+  updateShoppingItem: async (
+    itemId: string,
+    itemData: {
+      nombre?: string;
+      precio_unitario?: number;
+      cantidad?: number;
+      descuento_especifico_porcentaje?: number | null;
+      comprado?: boolean;
+      inventory_item_id?: string | null;
+    }
+  ): Promise<ShoppingItem> => {
+    const { data } = await api.put<ShoppingItem>(`/finanzas/shopping/items/${itemId}`, itemData);
+    return data;
+  },
+
+  deleteShoppingItem: async (itemId: string): Promise<void> => {
+    await api.delete(`/finanzas/shopping/items/${itemId}`);
+  },
+
   checkoutShoppingList: async (
     listId: string,
-    checkoutData: {
-      account_id: string;
-      category_id: string;
-      descripcion?: string;
-    }
+    checkoutData: ShoppingCheckoutRequest
   ): Promise<Transaction> => {
     const { data } = await api.post<Transaction>(`/finanzas/shopping/lists/${listId}/checkout`, checkoutData);
+    return data;
+  },
+
+  postCheckoutSyncInventory: async (syncData: PostCheckoutSyncRequest): Promise<{ synced_count: number; message: string }> => {
+    const { data } = await api.post<{ synced_count: number; message: string }>('/finanzas/shopping/post-checkout-sync', syncData);
     return data;
   },
 
@@ -345,6 +418,8 @@ export const finanzasApi = {
     monto_objetivo: number;
     moneda?: string;
     fecha_limite?: string | null;
+    user_id?: string | null;
+    es_personal?: boolean;
   }): Promise<SavingsGoal> => {
     const { data } = await api.post<SavingsGoal>('/finanzas/savings/goals', goalData);
     return data;
@@ -357,6 +432,8 @@ export const finanzasApi = {
       monto_objetivo?: number;
       moneda?: string;
       fecha_limite?: string | null;
+      user_id?: string | null;
+      es_personal?: boolean;
     }
   ): Promise<SavingsGoal> => {
     const { data } = await api.put<SavingsGoal>(`/finanzas/savings/goals/${id}`, goalData);
@@ -496,14 +573,47 @@ export const inventarioApi = {
     return data;
   },
 
+  updateLocation: async (
+    id: string,
+    locData: { nombre?: string; descripcion?: string }
+  ): Promise<Location> => {
+    const { data } = await api.put<Location>(`/inventario/locations/${id}`, locData);
+    return data;
+  },
+
+  deleteLocation: async (id: string): Promise<void> => {
+    await api.delete(`/inventario/locations/${id}`);
+  },
+
   getCategories: async (): Promise<InventoryCategory[]> => {
     const { data } = await api.get<InventoryCategory[]>('/inventario/categories');
     return data;
   },
 
-  getItems: async (locationId?: string): Promise<InventoryItem[]> => {
+  createCategory: async (catData: {
+    nombre: string;
+    icono?: string;
+    color?: string;
+  }): Promise<InventoryCategory> => {
+    const { data } = await api.post<InventoryCategory>('/inventario/categories', catData);
+    return data;
+  },
+
+  updateCategory: async (
+    id: string,
+    catData: { nombre?: string; icono?: string; color?: string }
+  ): Promise<InventoryCategory> => {
+    const { data } = await api.put<InventoryCategory>(`/inventario/categories/${id}`, catData);
+    return data;
+  },
+
+  deleteCategory: async (id: string): Promise<void> => {
+    await api.delete(`/inventario/categories/${id}`);
+  },
+
+  getItems: async (locationId?: string, categoryId?: string): Promise<InventoryItem[]> => {
     const { data } = await api.get<InventoryItem[]>('/inventario/items', {
-      params: { location_id: locationId },
+      params: { location_id: locationId, category_id: categoryId },
     });
     return data;
   },
@@ -520,10 +630,30 @@ export const inventarioApi = {
     stock_actual: number;
     stock_minimo: number;
     unidad_medida: string;
-    fecha_vencimiento?: string;
+    fecha_vencimiento?: string | null;
   }): Promise<InventoryItem> => {
     const { data } = await api.post<InventoryItem>('/inventario/items', itemData);
     return data;
+  },
+
+  updateItem: async (
+    id: string,
+    itemData: Partial<{
+      nombre: string;
+      location_id: string | null;
+      category_id: string | null;
+      stock_actual: number;
+      stock_minimo: number;
+      unidad_medida: string;
+      fecha_vencimiento: string | null;
+    }>
+  ): Promise<InventoryItem> => {
+    const { data } = await api.put<InventoryItem>(`/inventario/items/${id}`, itemData);
+    return data;
+  },
+
+  deleteItem: async (id: string): Promise<void> => {
+    await api.delete(`/inventario/items/${id}`);
   },
 
   adjustStock: async (
@@ -535,6 +665,16 @@ export const inventarioApi = {
       cantidad_cambio: cantidadCambio,
       nota,
     });
+    return data;
+  },
+
+  getItemLogs: async (itemId: string): Promise<StockLog[]> => {
+    const { data } = await api.get<StockLog[]>(`/inventario/items/${itemId}/logs`);
+    return data;
+  },
+
+  sendToShoppingList: async (req: SendToShoppingListRequest): Promise<ShoppingList> => {
+    const { data } = await api.post<ShoppingList>('/inventario/send-to-shopping-list', req);
     return data;
   },
 };

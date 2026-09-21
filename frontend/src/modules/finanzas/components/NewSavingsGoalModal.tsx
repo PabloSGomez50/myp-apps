@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 import { SavingsGoal } from '@/types';
-import { Target, Calendar, DollarSign, X } from 'lucide-react';
+import { Target, Calendar, DollarSign, X, Users, User as UserIcon } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -12,11 +13,14 @@ interface Props {
 
 export const NewSavingsGoalModal: React.FC<Props> = ({ isOpen, onClose, goalToEdit }) => {
   const queryClient = useQueryClient();
+  const { user: currentUser, householdMembers } = useAuth();
 
   const [nombre, setNombre] = useState('');
   const [montoObjetivo, setMontoObjetivo] = useState('');
   const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
   const [fechaLimite, setFechaLimite] = useState('');
+  const [esPersonal, setEsPersonal] = useState(false);
+  const [targetUserId, setTargetUserId] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -25,10 +29,12 @@ export const NewSavingsGoalModal: React.FC<Props> = ({ isOpen, onClose, goalToEd
       setMontoObjetivo(goalToEdit.monto_objetivo ? goalToEdit.monto_objetivo.toString() : '');
       setMoneda((goalToEdit.moneda as 'ARS' | 'USD') || 'ARS');
       setFechaLimite(goalToEdit.fecha_limite ? goalToEdit.fecha_limite.split('T')[0] : '');
+      setEsPersonal(!!goalToEdit.es_personal);
+      setTargetUserId(goalToEdit.user_id || currentUser?.id || '');
     } else {
       resetForm();
     }
-  }, [goalToEdit, isOpen]);
+  }, [goalToEdit, isOpen, currentUser]);
 
   const saveGoalMutation = useMutation({
     mutationFn: async () => {
@@ -41,21 +47,20 @@ export const NewSavingsGoalModal: React.FC<Props> = ({ isOpen, onClose, goalToEd
         throw new Error('El monto objetivo debe ser mayor a 0.');
       }
 
-      if (goalToEdit) {
-        return finanzasApi.updateSavingsGoal(goalToEdit.id, {
-          nombre: nombre.trim(),
-          monto_objetivo: parsedMonto,
-          moneda,
-          fecha_limite: fechaLimite ? fechaLimite : null,
-        });
-      }
-
-      return finanzasApi.createSavingsGoal({
+      const payload = {
         nombre: nombre.trim(),
         monto_objetivo: parsedMonto,
         moneda,
         fecha_limite: fechaLimite ? fechaLimite : null,
-      });
+        es_personal: esPersonal,
+        user_id: esPersonal ? (targetUserId || currentUser?.id || null) : null,
+      };
+
+      if (goalToEdit) {
+        return finanzasApi.updateSavingsGoal(goalToEdit.id, payload);
+      }
+
+      return finanzasApi.createSavingsGoal(payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['savings-goals'] });
@@ -73,6 +78,8 @@ export const NewSavingsGoalModal: React.FC<Props> = ({ isOpen, onClose, goalToEd
     setMontoObjetivo('');
     setMoneda('ARS');
     setFechaLimite('');
+    setEsPersonal(false);
+    setTargetUserId(currentUser?.id || '');
     setErrorMsg('');
   };
 
@@ -104,6 +111,62 @@ export const NewSavingsGoalModal: React.FC<Props> = ({ isOpen, onClose, goalToEd
           {errorMsg && (
             <div className="p-3 text-xs rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
               {errorMsg}
+            </div>
+          )}
+
+          {/* Scope Selector: Shared vs Personal */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              Titularidad de la Meta
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setEsPersonal(false)}
+                className={`px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
+                  !esPersonal
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>👥 Compartida</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEsPersonal(true);
+                  if (!targetUserId && currentUser) setTargetUserId(currentUser.id);
+                }}
+                className={`px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition ${
+                  esPersonal
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                }`}
+              >
+                <UserIcon className="w-4 h-4" />
+                <span>👤 Personal</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Target user selector if personal */}
+          {esPersonal && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Asignada a:
+              </label>
+              <select
+                value={targetUserId}
+                onChange={(e) => setTargetUserId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+              >
+                {householdMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    👤 {member.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

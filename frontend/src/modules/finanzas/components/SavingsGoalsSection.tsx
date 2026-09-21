@@ -84,7 +84,18 @@ export const SavingsGoalsSection: React.FC<SavingsGoalsSectionProps> = ({
               >
                 <div className="flex flex-col justify-between gap-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-base font-bold text-white">{goal.nombre}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-bold text-white">{goal.nombre}</h4>
+                      {goal.es_personal ? (
+                        <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-semibold flex items-center gap-1">
+                          👤 Personal
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-semibold flex items-center gap-1">
+                          👥 Compartida
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => onContributeGoal(goal)}

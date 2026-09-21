@@ -324,7 +324,7 @@ export const FinanzasDashboard: React.FC = () => {
             ${emergencyFund ? emergencyFund.ahorro_actual_emergencia.toLocaleString('es-AR') : '0,0'}
           </div>
           <p className="text-[11px] text-emerald-400">
-            Cobertura: <strong>{emergencyFund ? emergencyFund.meses_cubiertos_reales : '0.0'} meses</strong>
+            Cobertura: <strong>{emergencyFund ? Math.round(emergencyFund.meses_cubiertos_reales * 100) / 100 : '0.0'} meses</strong>
           </p>
         </div>
       </div>

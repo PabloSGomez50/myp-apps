@@ -71,8 +71,8 @@ myp-apps/
 
 > [!IMPORTANT]
 > **Estado de Validación por el Usuario:**
-> - **Fases 1, 2 y 3:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El core de auth, gastos 50/50, CSV, balance dashboard, automapeo y categorización están probados y aprobados.
-> - **Fases 4 y 5:** 🟡 **IMPLEMENTADAS EN CÓDIGO PERO PENDIENTES DE VALIDACIÓN FUNCIONAL POR EL USUARIO.** Toda la lógica backend, schemas, endpoints, tests de pytest y componentes frontend React están 100% desarrollados y compilando sin errores, pero **el usuario aún no los ha probado en producción/uso real**, por lo que están sujetos a cambios o refinamientos según su uso diario.
+> - **Fases 1, 2, 3 y 5:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El core de auth, gastos 50/50, CSV, balance dashboard, automapeo, categorización y el módulo de Inversiones & Ahorros están probados, aprobados y desplegados en Raspberry Pi 5.
+> - **Fase 4 (Inventario del Hogar):** 🟡 **EN PROCESO DE VALIDACIÓN OPERATIVA.** Enfoque actual para refinamiento de puntos críticos antes de estructurar la Fase 6 (Lista de Compras Inteligente y Histórico de Precios de Alimentos).
 
 - **Frontend SPA Integration:** Interfaz modular React 18 + Vite conectada 100% con FastAPI endpoints via React Query.
 - **Navegación & Layout:** Sidebar colapsable con persistencia en `localStorage`, posicionamiento `sticky top-16` y ancho responsivo expandido (`max-w-[1750px]`) optimizado para monitores 1920x1080.

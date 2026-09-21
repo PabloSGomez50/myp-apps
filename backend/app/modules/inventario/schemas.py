@@ -16,11 +16,17 @@ class LocationCreate(LocationBase):
     pass
 
 
+class LocationUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=100)
+    descripcion: str | None = Field(default=None, max_length=255)
+
+
 class LocationOut(LocationBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     household_id: uuid.UUID
+    item_count: int = 0
     created_at: datetime
 
 
@@ -32,6 +38,12 @@ class InventoryCategoryBase(BaseModel):
 
 class InventoryCategoryCreate(InventoryCategoryBase):
     pass
+
+
+class InventoryCategoryUpdate(BaseModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=100)
+    icono: str | None = Field(default=None, max_length=50)
+    color: str | None = Field(default=None, max_length=50)
 
 
 class InventoryCategoryOut(InventoryCategoryBase):
@@ -82,13 +94,34 @@ class InventoryItemOut(InventoryItemBase):
     created_at: datetime
 
 
+class StockLogUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nombre: str
+    color_avatar: str = "emerald"
+
+
 class StockLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     item_id: uuid.UUID
     user_id: uuid.UUID
+    user: StockLogUserOut | None = None
     tipo_movimiento: MovementTypeEnum
     cantidad_cambio: Decimal
     nota: str | None = None
     fecha: datetime
+
+
+class SendToShoppingListItem(BaseModel):
+    item_id: uuid.UUID
+    nombre: str
+    cantidad: int = Field(..., ge=1)
+
+
+class SendToShoppingListRequest(BaseModel):
+    shopping_list_id: uuid.UUID | None = None
+    shopping_list_name: str | None = None
+    items: list[SendToShoppingListItem] = Field(..., min_length=1)

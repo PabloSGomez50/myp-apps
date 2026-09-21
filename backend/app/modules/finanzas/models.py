@@ -167,6 +167,25 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     category: Mapped["Category | None"] = relationship("Category", lazy="selectin")
 
 
+class Supermarket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "supermarkets"
+    __table_args__ = {"schema": "finanzas"}
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    nombre: Mapped[str] = mapped_column(String(100), nullable=False)
+    icono: Mapped[str] = mapped_column(String(50), default="shopping-bag", nullable=False)
+    color: Mapped[str] = mapped_column(String(50), default="emerald", nullable=False)
+    descuento_habitual_porcentaje: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("0.00"), nullable=False
+    )
+    dia_promocion_habitual: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+
 class ShoppingList(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "shopping_lists"
     __table_args__ = {"schema": "finanzas"}
@@ -177,12 +196,20 @@ class ShoppingList(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    supermarket_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finanzas.supermarkets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
+    estado: Mapped[str] = mapped_column(String(20), default="ACTIVE", nullable=False)
     descuento_general_porcentaje: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), default=Decimal("0.00"), nullable=False
     )
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    supermarket: Mapped["Supermarket | None"] = relationship("Supermarket", lazy="selectin")
     items: Mapped[list["ShoppingItem"]] = relationship(
         "ShoppingItem",
         back_populates="shopping_list",
@@ -201,6 +228,12 @@ class ShoppingItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    inventory_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inventario.items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
     precio_unitario: Mapped[Decimal] = mapped_column(
         Numeric(14, 2), default=Decimal("0.00"), nullable=False
@@ -214,6 +247,41 @@ class ShoppingItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     shopping_list: Mapped["ShoppingList"] = relationship("ShoppingList", back_populates="items")
 
 
+class FoodPriceHistory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "food_price_history"
+    __table_args__ = {"schema": "finanzas"}
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    supermarket_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("finanzas.supermarkets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    inventory_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inventario.items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    item_nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    precio_unitario: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    descuento_aplicado: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("0.00"), nullable=False
+    )
+    precio_efectivo: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    fecha: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    supermarket: Mapped["Supermarket | None"] = relationship("Supermarket", lazy="selectin")
+
+
 class SavingsGoal(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "savings_goals"
     __table_args__ = {"schema": "finanzas"}
@@ -224,6 +292,13 @@ class SavingsGoal(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    es_personal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     monto_objetivo: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     monto_acumulado: Mapped[Decimal] = mapped_column(
@@ -232,6 +307,7 @@ class SavingsGoal(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     moneda: Mapped[str] = mapped_column(String(10), default="ARS", nullable=False)
     fecha_limite: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    user: Mapped["User | None"] = relationship("User", lazy="selectin")
     contributions: Mapped[list["GoalContribution"]] = relationship(
         "GoalContribution", back_populates="goal", cascade="all, delete-orphan", lazy="selectin"
     )

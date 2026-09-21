@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { finanzasApi } from '@/services/api';
+import { finanzasApi, coreApi } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 import { SavingsGoal, Broker, InvestmentAsset } from '@/types';
 import {
   Plus,
@@ -10,7 +11,7 @@ import {
   TrendingUp,
   Trash2,
   Pencil,
-  PieChart as PieChartIcon,
+  Users,
 } from 'lucide-react';
 import { NewSavingsGoalModal } from '../components/NewSavingsGoalModal';
 import { AddContributionModal } from '../components/AddContributionModal';
@@ -39,6 +40,9 @@ const formatCurrency = (val: any, decimals: number = 2): string => {
 
 export const InversionesPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const { householdMembers: authMembers } = useAuth();
+
+  const [viewScope, setViewScope] = useState<string>('ALL'); // 'ALL' or member.id
 
   // Modals state
   const [isNewGoalOpen, setIsNewGoalOpen] = useState(false);
@@ -61,6 +65,22 @@ export const InversionesPage: React.FC = () => {
   const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
 
   // React Query calls
+  const { data: householdData } = useQuery({
+    queryKey: ['household'],
+    queryFn: () => coreApi.getHousehold(),
+  });
+
+  const membersList = useMemo(() => {
+    return householdData?.members && householdData.members.length > 0
+      ? householdData.members.map((m) => m.user)
+      : authMembers;
+  }, [householdData, authMembers]);
+
+  const selectedMemberName = useMemo(() => {
+    if (viewScope === 'ALL') return null;
+    return membersList.find((m) => m.id === viewScope)?.nombre || null;
+  }, [viewScope, membersList]);
+
   const { data: goals = [], isLoading: isLoadingGoals } = useQuery({
     queryKey: ['savings-goals'],
     queryFn: () => finanzasApi.getSavingsGoals(),
@@ -74,11 +94,6 @@ export const InversionesPage: React.FC = () => {
   const { data: latestQuotes = {} } = useQuery({
     queryKey: ['latest-currency-quotes'],
     queryFn: () => finanzasApi.getLatestCurrencyQuotes(),
-  });
-
-  const { data: quotesHistory = [] } = useQuery({
-    queryKey: ['currency-quotes'],
-    queryFn: () => finanzasApi.getCurrencyQuotes(),
   });
 
   const { data: assets = [], isLoading: isLoadingAssets } = useQuery({
@@ -103,49 +118,88 @@ export const InversionesPage: React.FC = () => {
     },
   });
 
-  // Flatten all goal contributions to compute broker allocations
-  const allContributions = goals.flatMap((g) =>
-    (g.contributions || []).map((c) => ({
-      ...c,
-      goalMoneda: g.moneda,
-      goalNombre: g.nombre,
-    }))
-  );
+  // Filter Brokers by scope
+  const filteredBrokers = useMemo(() => {
+    if (viewScope === 'ALL') return brokers;
+    return brokers.filter((b) => b.user_id === viewScope);
+  }, [brokers, viewScope]);
 
-  // Calculate external (non-broker) savings to avoid double-counting funds already in brokers
-  let externalSavingsARS = 0;
-  let externalSavingsUSD = 0;
+  // Filter Assets by scope (belonging to filtered brokers)
+  const filteredAssets = useMemo(() => {
+    if (viewScope === 'ALL') return assets;
+    return assets.filter((a) => a.broker && a.broker.user_id === viewScope);
+  }, [assets, viewScope]);
 
-  goals.forEach((g) => {
-    const contributions = g.contributions || [];
-    const brokerContribs = contributions.filter((c) => c.broker_id);
-    const brokerContribsSum = brokerContribs.reduce((sum, c) => sum + toNumber(c.monto), 0);
-    const externalAmount = Math.max(0, toNumber(g.monto_acumulado) - brokerContribsSum);
+  // Filter Goals by scope
+  const filteredGoals = useMemo(() => {
+    if (viewScope === 'ALL') return goals;
+    return goals.filter((g) => {
+      if (g.es_personal) {
+        return g.user_id === viewScope;
+      }
+      const hasContrib = (g.contributions || []).some((c) => c.user_id === viewScope);
+      return hasContrib || !g.user_id;
+    });
+  }, [goals, viewScope]);
 
-    if (g.moneda === 'ARS') {
-      externalSavingsARS += externalAmount;
-    } else {
-      externalSavingsUSD += externalAmount;
-    }
-  });
+  // Recalculate metrics for filtered scope
+  const {
+    portfolioEstimatedARS,
+    portfolioEstimatedUSD,
+    totalBrokersARS,
+    totalBrokersUSDNominal,
+    externalSavingsARS,
+    externalSavingsUSD,
+    usdBlueRate,
+  } = useMemo(() => {
+    const usdBlueRate = toNumber(latestQuotes['USD_BLUE']) || 1350;
 
-  const totalBrokersARS = brokers.reduce((sum, b) => sum + toNumber(b.saldo_total_ars), 0);
-  const totalBrokersUSDNominal = brokers.reduce(
-    (sum, b) => sum + toNumber(b.saldo_total_usd) + toNumber(b.saldo_total_crypto),
-    0
-  );
+    let extARS = 0;
+    let extUSD = 0;
 
-  const usdBlueRate = toNumber(latestQuotes['USD_BLUE']) || 1350;
-  const totalBrokersCombinedUSD = totalBrokersUSDNominal + totalBrokersARS / (usdBlueRate || 1);
+    filteredGoals.forEach((g) => {
+      const contributions = g.contributions || [];
+      const relevantContribs =
+        viewScope === 'ALL'
+          ? contributions
+          : contributions.filter((c) => c.user_id === viewScope);
 
-  // Consolidated portfolio = All Broker funds + External savings (not held in brokers)
-  const portfolioEstimatedARS =
-    totalBrokersARS +
-    totalBrokersUSDNominal * usdBlueRate +
-    externalSavingsARS +
-    externalSavingsUSD * usdBlueRate;
+      const brokerContribs = relevantContribs.filter((c) => c.broker_id);
+      const brokerContribsSum = brokerContribs.reduce((sum, c) => sum + toNumber(c.monto), 0);
 
-  const portfolioEstimatedUSD = portfolioEstimatedARS / (usdBlueRate || 1);
+      const totalAccumulated =
+        viewScope === 'ALL'
+          ? toNumber(g.monto_acumulado)
+          : relevantContribs.reduce((sum, c) => sum + toNumber(c.monto), 0);
+
+      const externalAmount = Math.max(0, totalAccumulated - brokerContribsSum);
+
+      if (g.moneda === 'ARS') {
+        extARS += externalAmount;
+      } else {
+        extUSD += externalAmount;
+      }
+    });
+
+    const bARS = filteredBrokers.reduce((sum, b) => sum + toNumber(b.saldo_total_ars), 0);
+    const bUSD = filteredBrokers.reduce(
+      (sum, b) => sum + toNumber(b.saldo_total_usd) + toNumber(b.saldo_total_crypto),
+      0
+    );
+
+    const portfolioARS = bARS + bUSD * usdBlueRate + extARS + extUSD * usdBlueRate;
+    const portfolioUSD = portfolioARS / (usdBlueRate || 1);
+
+    return {
+      portfolioEstimatedARS: portfolioARS,
+      portfolioEstimatedUSD: portfolioUSD,
+      totalBrokersARS: bARS,
+      totalBrokersUSDNominal: bUSD,
+      externalSavingsARS: extARS,
+      externalSavingsUSD: extUSD,
+      usdBlueRate,
+    };
+  }, [filteredGoals, filteredBrokers, latestQuotes, viewScope]);
 
   const toggleExpandGoal = (id: string) => {
     setExpandedGoalId((prev) => (prev === id ? null : id));
@@ -167,8 +221,13 @@ export const InversionesPage: React.FC = () => {
       {/* Header & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
-            Inversiones & Metas de Ahorro
+          <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            <span>Inversiones & Metas de Ahorro</span>
+            {selectedMemberName && (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                Solo {selectedMemberName}
+              </span>
+            )}
           </h2>
           <p className="text-xs text-slate-400">
             Plataformas/Brokers, Títulos & Fondos (FCI), Metas de Ahorro e Histórico de Cotizaciones
@@ -199,206 +258,265 @@ export const InversionesPage: React.FC = () => {
             <Plus className="w-3.5 h-3.5 text-purple-400" />
             <span>Nueva Plataforma</span>
           </button>
-
-          <button
-            onClick={() => setIsNewGoalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-cyan-600/20 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nueva Meta</span>
-          </button>
         </div>
       </div>
 
-      {/* Top Cards Grid (3 Consolidated Cards) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* View Scope Selector Bar (Hogar Completo vs Individual Member) */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 w-fit shadow-md">
+        <span className="text-xs font-semibold text-slate-400 px-2 flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5 text-indigo-400" /> Vista:
+        </span>
+
+        <button
+          onClick={() => setViewScope('ALL')}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
+            viewScope === 'ALL'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <span>🏠 Hogar Completo (Consolidado)</span>
+        </button>
+
+        {membersList.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setViewScope(m.id)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
+              viewScope === m.id
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <span
+              className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-[9px] text-white flex-shrink-0"
+              style={{ backgroundColor: m.color_avatar || '#16a34a' }}
+            >
+              {m.nombre[0]}
+            </span>
+            <span>Solo {m.nombre}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Top Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: Patrimonio Total Consolidado */}
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-2.5 shadow-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>Patrimonio Total Consolidado</span>
-            <PieChartIcon className="w-4 h-4 text-cyan-400" />
+        <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/30 border border-emerald-500/20 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4" />
+              Patrimonio Total Consolidado
+            </span>
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 text-[10px] font-mono border border-emerald-500/20">
+              USD Blue: ${formatCurrency(usdBlueRate, 0)}
+            </span>
           </div>
+
           <div>
-            <p className="text-2xl font-bold font-mono text-white">
-              ${formatCurrency(portfolioEstimatedARS, 0)} ARS
-            </p>
-            <p className="text-xs font-mono text-cyan-400 font-semibold mt-0.5">
-              ≈ ${formatCurrency(portfolioEstimatedUSD, 2)} USD
+            <div className="text-2xl md:text-3xl font-black font-mono text-white tracking-tight">
+              ${formatCurrency(portfolioEstimatedUSD)} USD
+            </div>
+            <p className="text-xs text-slate-400 mt-1 font-mono">
+              ≈ ${formatCurrency(portfolioEstimatedARS)} ARS
             </p>
           </div>
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-            <span>En Brokers: ${formatCurrency(totalBrokersARS + totalBrokersUSDNominal * usdBlueRate, 0)}</span>
-            <span>Ahorros Ext.: ${formatCurrency(externalSavingsARS + externalSavingsUSD * usdBlueRate, 0)}</span>
+
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span>En Brokers: ${formatCurrency(totalBrokersUSDNominal)} USD</span>
+            <span>Ahorros Ext.: ${formatCurrency(externalSavingsUSD)} USD (${formatCurrency(externalSavingsARS)} ARS)</span>
           </div>
         </div>
 
-        {/* Card 2: Plataformas / Brokers */}
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-2 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>Plataformas & Brokers</span>
-            <Briefcase className="w-4 h-4 text-purple-400" />
+        {/* Card 2: Fondos en Brokers / Plataformas */}
+        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Briefcase className="w-4 h-4" />
+              Fondos en Brokers / Plataformas
+            </span>
+            <span className="text-xs text-slate-400 font-mono">{filteredBrokers.length} brokers</span>
           </div>
-          <div className="space-y-1">
-            <p className="font-semibold font-mono text-white">
-              ARS: ${formatCurrency(totalBrokersARS)}
+
+          <div>
+            <div className="text-2xl md:text-3xl font-black font-mono text-white tracking-tight">
+              ${formatCurrency(totalBrokersUSDNominal)} USD
+            </div>
+            <p className="text-xs text-slate-400 mt-1 font-mono">
+              ${formatCurrency(totalBrokersARS)} ARS
             </p>
-            <p className="font-mono text-purple-400 font-semibold">
-              USD: ${formatCurrency(totalBrokersUSDNominal)} 
-            </p>
-            <p className="font-mono text-emerald-400 font-bold pt-1 border-t border-slate-800/80">
-              USD: ${formatCurrency(totalBrokersCombinedUSD)}
-            </p>
+          </div>
+
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span>
+              Saldo ARS: ${formatCurrency(totalBrokersARS)}
+            </span>
+            <span>
+              Saldo USD/Crypto: ${formatCurrency(totalBrokersUSDNominal)}
+            </span>
           </div>
         </div>
 
-        {/* Card 3: Cotizaciones Actuales (Dinámico) */}
-        <div className="p-4 rounded-3xl bg-slate-900 border border-slate-800 space-y-2 shadow-xl flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>Cotizaciones Actuales</span>
+        {/* Card 3: Últimas Cotizaciones */}
+        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 shadow-xl md:col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+              <RefreshCw className="w-4 h-4" />
+              Últimas Cotizaciones
+            </span>
             <button
               onClick={() => setIsNewQuoteOpen(true)}
-              className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-[11px] font-medium"
+              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium"
             >
-              <DollarSign className="w-3.5 h-3.5" />
-              <span>Cargar Cotizacion</span>
+              + Actualizar
             </button>
           </div>
 
-          <p className="text-slate-400 text-xs">
-            Dólar Blue Ref:{' '}
-            <span className="font-mono font-semibold text-white">
-              ${formatCurrency(usdBlueRate)} ARS
-            </span>
-          </p>
-
-          {quoteEntries.length === 0 ? (
-            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-center text-xs text-slate-400">
-              No hay cotizaciones registradas.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2 text-xs max-h-24 overflow-y-auto custom-scrollbar">
-              {quoteEntries.map(([currencyKey, quoteVal]) => (
-                <div key={currencyKey} className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-                  <span className="text-[10px] text-slate-400 block font-semibold truncate uppercase">
-                    {currencyKey.replace('_', ' ')}
-                  </span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    ${formatCurrency(quoteVal)}
+          {quoteEntries.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {quoteEntries.map(([currencyKey, val]) => (
+                <div
+                  key={currencyKey}
+                  className="p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center justify-between"
+                >
+                  <span className="text-xs text-slate-400 font-semibold">{currencyKey}</span>
+                  <span className="text-xs font-mono font-bold text-white">
+                    ${formatCurrency(val, 0)}
                   </span>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="py-4 text-center text-xs text-slate-500">
+              No hay cotizaciones registradas aún.
             </div>
           )}
         </div>
       </div>
 
-      {/* Main Content Grid: Left 2 Cols (Brokers, Pie Chart & Assets) vs Right 1 Col (Savings Goals Component) */}
+      {/* Main Content Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Plataformas, Pie Chart & Títulos/Fondos FCI */}
+        {/* Left Column: Brokers & Holdings */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Row 1: Brokers & Plataformas */}
+          {/* Brokers Cards */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-purple-400" />
-                <span>Plataformas & Brokers</span>
+                <span>Plataformas & Brokers ({filteredBrokers.length})</span>
               </h3>
               <button
                 onClick={() => setIsNewBrokerOpen(true)}
-                className="text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                className="px-2.5 py-1 rounded-xl text-purple-400 hover:text-purple-200 text-xs font-semibold flex items-center gap-1 transition-colors"
               >
-                + Agregar Plataforma
+                <Plus className="w-3.5 h-3.5 text-purple-400" />
+                <span>Agregar Broker</span>
               </button>
             </div>
 
             {isLoadingBrokers ? (
-              <div className="p-6 text-center text-slate-500 rounded-3xl bg-slate-900 border border-slate-800 text-xs">
+              <div className="p-8 text-center text-slate-500 rounded-3xl bg-slate-900 border border-slate-800 text-xs">
                 Cargando plataformas...
               </div>
-            ) : brokers.length === 0 ? (
-              <div className="p-6 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
-                <p className="text-xs text-slate-400">No hay brokers o billeteras de inversión registradas.</p>
+            ) : filteredBrokers.length === 0 ? (
+              <div className="p-8 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                <p className="text-xs text-slate-400">
+                  {viewScope !== 'ALL'
+                    ? `No hay brokers registrados para ${selectedMemberName}.`
+                    : 'No hay brokers o plataformas registradas aún.'}
+                </p>
                 <button
                   onClick={() => setIsNewBrokerOpen(true)}
-                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-lg shadow-purple-600/20"
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-lg shadow-purple-600/20 transition-colors"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Crear Broker
+                  <Plus className="w-4 h-4" /> Registrar primera plataforma
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {brokers.map((broker) => {
-                  const brokerContribs = allContributions.filter((c) => c.broker_id === broker.id);
-                  const assignedARS = brokerContribs
-                    .filter((c) => c.goalMoneda === 'ARS')
-                    .reduce((sum, c) => sum + toNumber(c.monto), 0);
-                  const assignedUSD = brokerContribs
-                    .filter((c) => c.goalMoneda === 'USD')
-                    .reduce((sum, c) => sum + toNumber(c.monto), 0);
+                {filteredBrokers.map((broker) => {
+                  const brokerGoalsContribs = goals
+                    .flatMap((g) => g.contributions || [])
+                    .filter((c) => c.broker_id === broker.id);
 
-                  const totalBrokerUSDVal =
-                    toNumber(broker.saldo_total_usd) +
-                    toNumber(broker.saldo_total_crypto) +
-                    toNumber(broker.saldo_total_ars) / (usdBlueRate || 1);
+                  const totalAllocatedUSD = brokerGoalsContribs.reduce(
+                    (sum, c) => sum + toNumber(c.monto),
+                    0
+                  );
 
-                  const totalAssignedUSD = assignedUSD + assignedARS / (usdBlueRate || 1);
-                  const unassignedUSD = Math.max(0, totalBrokerUSDVal - totalAssignedUSD);
+                  const brokerTotalUSD =
+                    toNumber(broker.saldo_total_usd) + toNumber(broker.saldo_total_crypto);
+                  const availableUnallocatedUSD = Math.max(0, brokerTotalUSD - totalAllocatedUSD);
+
+                  const brokerOwner = membersList.find((m) => m.id === broker.user_id);
 
                   return (
                     <div
                       key={broker.id}
-                      className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 shadow-lg hover:border-slate-700 transition-colors flex flex-col justify-between"
+                      className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3 shadow-lg hover:border-slate-700 transition-colors"
                     >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-base font-bold text-white">{broker.nombre}</h4>
-                          <p className="text-xs text-slate-400">Plataforma de inversión</p>
+                        <div className="space-y-0.5">
+                          <h4 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                            <span>{broker.nombre}</span>
+                            {brokerOwner && (
+                              <span
+                                className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] text-white"
+                                style={{ backgroundColor: brokerOwner.color_avatar || '#16a34a' }}
+                                title={`Owner: ${brokerOwner.nombre}`}
+                              >
+                                {brokerOwner.nombre[0]}
+                              </span>
+                            )}
+                          </h4>
+                          <span className="text-[10px] text-purple-400 font-mono">
+                            Broker / Cuenta de Inversión
+                          </span>
                         </div>
 
                         <button
                           onClick={() => setSelectedBrokerForTx(broker)}
-                          className="px-3 py-1 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-300 text-xs font-medium flex items-center gap-1 transition-colors"
+                          className="px-2.5 py-1 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-300 text-xs font-medium flex items-center gap-1 transition-colors"
                         >
                           <Plus className="w-3.5 h-3.5 text-purple-400" />
                           <span>Operar</span>
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/60 text-xs">
-                        <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold block">ARS</span>
-                          <span className="font-mono font-bold text-white">${formatCurrency(broker.saldo_total_ars)}</span>
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
+                        <div className="p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/60">
+                          <span className="text-[10px] font-semibold text-slate-400 block uppercase">
+                            Saldo ARS
+                          </span>
+                          <span className="text-sm font-mono font-bold text-white">
+                            ${formatCurrency(broker.saldo_total_ars)}
+                          </span>
                         </div>
-                        <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold block">USD</span>
-                          <span className="font-mono font-bold text-purple-400">${formatCurrency(broker.saldo_total_usd)}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold block">Crypto (USD)</span>
-                          <span className="font-mono font-bold text-emerald-400">${formatCurrency(broker.saldo_total_crypto, 2)}</span>
+
+                        <div className="p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800/60">
+                          <span className="text-[10px] font-semibold text-slate-400 block uppercase">
+                            Saldo USD / Crypto
+                          </span>
+                          <span className="text-sm font-mono font-bold text-emerald-400">
+                            ${formatCurrency(brokerTotalUSD)} USD
+                          </span>
                         </div>
                       </div>
 
-                      {/* Goal Allocation Breakdown */}
-                      <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/60 space-y-1 text-xs">
-                        <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-                          <span>Asignado a Metas</span>
-                          <span className="font-mono text-cyan-400 font-bold">
-                            ${formatCurrency(totalAssignedUSD)} USD
+                      {/* Goal Allocations breakdown */}
+                      <div className="pt-2 border-t border-slate-800/60 space-y-1 text-xs">
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Asignado a Metas:</span>
+                          <span className="font-mono font-semibold text-cyan-400">
+                            ${formatCurrency(totalAllocatedUSD)} USD
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold">
-                          <span>Disponible Sin Asignar</span>
-                          <span className="font-mono text-emerald-400 font-bold">
-                            ${formatCurrency(unassignedUSD)} USD
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Disponible Sin Asignar:</span>
+                          <span className="font-mono font-semibold text-emerald-400">
+                            ${formatCurrency(availableUnallocatedUSD)} USD
                           </span>
                         </div>
-                        {/* {brokerContribs.length > 0 && (
-                          <div className="pt-1 text-[10px] text-slate-500 truncate">
-                            Metas vinculadas:{' '}
-                            {Array.from(new Set(brokerContribs.map((c) => c.goalNombre))).join(', ')}
-                          </div>
-                        )} */}
                       </div>
                     </div>
                   );
@@ -407,252 +525,220 @@ export const InversionesPage: React.FC = () => {
             )}
           </div>
 
-          {/* Row 2: Grid of 2 equal columns: Col 1 (Pie Chart 1 col) & Col 2 (Títulos, CEDEARs & Fondos FCI) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Col 1: Reusable Pie Chart Component (1 col) */}
-            <BrokerDistributionPieChart brokers={brokers} usdBlueRate={usdBlueRate} />
+          {/* Broker Distribution Pie Chart */}
+          <BrokerDistributionPieChart brokers={filteredBrokers} usdBlueRate={usdBlueRate} />
 
-            {/* Col 2: Títulos, CEDEARs, Acciones & Fondos FCI with Expected Returns Calculation */}
-            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl col-span-1 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Títulos, CEDEARs & Fondos (FCI)</h4>
-                    <p className="text-[11px] text-slate-400">{assets.length} instrumentos activos</p>
-                  </div>
-                </div>
+          {/* Investment Assets Table */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <span>Títulos, CEDEARs, Acciones & FCI ({filteredAssets.length})</span>
+              </h3>
+              <button
+                onClick={() => setIsNewAssetOpen(true)}
+                className="px-2.5 py-1 rounded-xl text-emerald-400 hover:text-emerald-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Agregar Título</span>
+              </button>
+            </div>
 
+            {isLoadingAssets ? (
+              <div className="p-8 text-center text-slate-500 rounded-3xl bg-slate-900 border border-slate-800 text-xs">
+                Cargando activos...
+              </div>
+            ) : filteredAssets.length === 0 ? (
+              <div className="p-8 text-center rounded-3xl bg-slate-900 border border-slate-800 space-y-3">
+                <p className="text-xs text-slate-400">No hay activos o títulos registrados aún.</p>
                 <button
                   onClick={() => setIsNewAssetOpen(true)}
-                  className="px-2.5 py-1 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-colors"
                 >
-                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Añadir</span>
+                  <Plus className="w-4 h-4" /> Registrar primer título
                 </button>
               </div>
+            ) : (
+              <div className="overflow-x-auto rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-xl">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/80 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-4 py-3">Ticker / Nombre</th>
+                      <th className="px-4 py-3">Broker</th>
+                      <th className="px-4 py-3 text-right">Cantidad</th>
+                      <th className="px-4 py-3 text-right">Precio Actual</th>
+                      <th className="px-4 py-3 text-right">Valor Total</th>
+                      <th className="px-4 py-3 text-right">Rent. Anual</th>
+                      <th className="px-4 py-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredAssets.map((asset) => {
+                      const totalVal = toNumber(asset.cantidad) * toNumber(asset.precio_actual);
+                      const gananciaAnual =
+                        totalVal * (toNumber(asset.rentabilidad_esperada_anual) / 100);
+                      const gananciaMensual = gananciaAnual / 12;
 
-              {isLoadingAssets ? (
-                <div className="p-6 text-center text-slate-500 text-xs">Cargando títulos...</div>
-              ) : assets.length === 0 ? (
-                <div className="p-6 text-center space-y-2 border border-dashed border-slate-800 rounded-2xl">
-                  <p className="text-xs text-slate-400">No hay títulos ni fondos FCI registrados aún.</p>
-                  <button
-                    onClick={() => setIsNewAssetOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Registrar mi primer FCI / CEDEAR
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
-                  {assets.map((asset) => {
-                    const capital = toNumber(asset.cantidad) * toNumber(asset.precio_actual);
-                    const rentabilidadPct = toNumber(asset.rentabilidad_esperada_anual);
-                    const gananciaAnual = capital * (rentabilidadPct / 100);
-                    const gananciaMensual = gananciaAnual / 12;
-
-                    return (
-                      <div
-                        key={asset.id}
-                        className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-2 hover:border-slate-700 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg">
-                              {asset.ticker}
-                            </span>
+                      return (
+                        <tr key={asset.id} className="hover:bg-slate-800/40 transition">
+                          <td className="px-4 py-3 font-semibold text-white">
                             <div>
-                              <h5 className="text-xs font-bold text-white truncate max-w-[140px]">
-                                {asset.nombre}
-                              </h5>
-                              <span className="text-[10px] text-slate-500">
-                                {asset.tipo.replace('_', ' ')} {asset.broker?.nombre ? `• ${asset.broker.nombre}` : ''}
+                              <span className="font-mono text-emerald-400 font-bold mr-1.5">
+                                {asset.ticker}
+                              </span>
+                              {asset.nombre}
+                              <span className="text-[10px] text-slate-500 block">
+                                {asset.tipo} ({asset.moneda})
                               </span>
                             </div>
-                          </div>
+                          </td>
 
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => {
-                                setAssetToEdit(asset);
-                                setIsNewAssetOpen(true);
-                              }}
-                              className="p-1 text-slate-500 hover:text-emerald-400 transition-colors"
-                              title="Editar título"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                setItemToDelete({
-                                  type: 'ASSET',
-                                  id: asset.id,
-                                  name: `${asset.ticker} - ${asset.nombre}`,
-                                })
-                              }
-                              className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
-                              title="Eliminar título"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px]">
+                              {asset.broker?.nombre || 'Sin broker'}
+                            </span>
+                          </td>
 
-                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800/60">
-                          <div>
-                            <span className="text-[10px] text-slate-500 block">Tenencia Actual</span>
-                            <span className="font-mono font-bold text-white">
-                              ${formatCurrency(capital)} {asset.moneda}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-500 block">Rentabilidad Esperada</span>
-                            <span className="font-mono font-bold text-emerald-400">
-                              {rentabilidadPct}% TNA/TEA
-                            </span>
-                          </div>
-                        </div>
+                          <td className="px-4 py-3 text-right font-mono">
+                            {formatCurrency(asset.cantidad, 4)}
+                          </td>
 
-                        {/* Future Gain Projections */}
-                        {rentabilidadPct > 0 && (
-                          <div className="flex items-center justify-between text-[10px] bg-emerald-500/10 p-1.5 rounded-xl border border-emerald-500/20">
-                            <span className="text-emerald-300 font-semibold">Ganancia Proyectada:</span>
-                            <span className="font-mono font-bold text-emerald-300">
-                              +${formatCurrency(gananciaMensual)} {asset.moneda}/mes (${formatCurrency(gananciaAnual)}/año)
+                          <td className="px-4 py-3 text-right font-mono">
+                            ${formatCurrency(asset.precio_actual)}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                            ${formatCurrency(totalVal)} {asset.moneda}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-mono text-emerald-400">
+                            +{formatCurrency(asset.rentabilidad_esperada_anual)}%
+                            <span className="text-[10px] text-slate-500 block">
+                              +${formatCurrency(gananciaMensual)}/mes
                             </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                          </td>
+
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => {
+                                  setAssetToEdit(asset);
+                                  setIsNewAssetOpen(true);
+                                }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                                title="Editar título"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setItemToDelete({
+                                    type: 'ASSET',
+                                    id: asset.id,
+                                    name: `${asset.ticker} - ${asset.nombre}`,
+                                  })
+                                }
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                                title="Eliminar título"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right 1 Col: Savings Goals Component */}
-        <SavingsGoalsSection
-          goals={goals}
-          isLoadingGoals={isLoadingGoals}
-          expandedGoalId={expandedGoalId}
-          onToggleExpandGoal={toggleExpandGoal}
-          onOpenNewGoal={() => setIsNewGoalOpen(true)}
-          onEditGoal={(goal) => {
-            setGoalToEdit(goal);
-            setIsNewGoalOpen(true);
+        {/* Right Column: Savings Goals Section */}
+        <div>
+          <SavingsGoalsSection
+            goals={filteredGoals}
+            isLoadingGoals={isLoadingGoals}
+            expandedGoalId={expandedGoalId}
+            onToggleExpandGoal={toggleExpandGoal}
+            onOpenNewGoal={() => {
+              setGoalToEdit(null);
+              setIsNewGoalOpen(true);
+            }}
+            onEditGoal={(goal) => {
+              setGoalToEdit(goal);
+              setIsNewGoalOpen(true);
+            }}
+            onContributeGoal={(goal) => setSelectedGoalForContribution(goal)}
+            onRequestDeleteGoal={(goal) =>
+              setItemToDelete({
+                type: 'GOAL',
+                id: goal.id,
+                name: goal.nombre,
+              })
+            }
+          />
+        </div>
+      </div>
+
+      {/* MODALS */}
+      {isNewGoalOpen && (
+        <NewSavingsGoalModal
+          isOpen={isNewGoalOpen}
+          onClose={() => {
+            setIsNewGoalOpen(false);
+            setGoalToEdit(null);
           }}
-          onContributeGoal={(goal) => setSelectedGoalForContribution(goal)}
-          onRequestDeleteGoal={(goal) =>
-            setItemToDelete({
-              type: 'GOAL',
-              id: goal.id,
-              name: goal.nombre,
-            })
-          }
+          goalToEdit={goalToEdit}
         />
-      </div>
+      )}
 
-      {/* Historical Exchange Rates Section */}
-      <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-emerald-400" />
-              <span>Histórico de Cotizaciones de Divisas</span>
-            </h3>
-            <p className="text-xs text-slate-400">
-              Registro continuo de tipos de cambio para la valuación de activos y dólar MEP / Blue / USDT
-            </p>
-          </div>
+      {selectedGoalForContribution && (
+        <AddContributionModal
+          isOpen={!!selectedGoalForContribution}
+          onClose={() => setSelectedGoalForContribution(null)}
+          goal={selectedGoalForContribution}
+        />
+      )}
 
-          <button
-            onClick={() => setIsNewQuoteOpen(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Agregar Cotización</span>
-          </button>
-        </div>
+      {isNewBrokerOpen && (
+        <NewBrokerModal isOpen={isNewBrokerOpen} onClose={() => setIsNewBrokerOpen(false)} />
+      )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                <th className="p-3">Moneda Origen</th>
-                <th className="p-3">Moneda Destino</th>
-                <th className="p-3 text-right">Cotización</th>
-                <th className="p-3 text-right">Fecha</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 text-xs text-slate-200">
-              {quotesHistory.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-6 text-center text-slate-500">
-                    No hay cotizaciones registradas en el historial. Haz clic en "Agregar Cotización" para cargar una.
-                  </td>
-                </tr>
-              ) : (
-                quotesHistory.slice(0, 10).map((quote) => (
-                  <tr key={quote.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-3 font-semibold text-emerald-400">{quote.moneda_origen}</td>
-                    <td className="p-3 text-slate-400">{quote.moneda_destino}</td>
-                    <td className="p-3 text-right font-mono font-bold text-white">
-                      ${formatCurrency(quote.cotizacion)} ARS
-                    </td>
-                    <td className="p-3 text-right font-mono text-slate-400">
-                      {new Date(quote.fecha).toLocaleDateString('es-AR')}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {selectedBrokerForTx && (
+        <BrokerTxModal
+          isOpen={!!selectedBrokerForTx}
+          onClose={() => setSelectedBrokerForTx(null)}
+          broker={selectedBrokerForTx}
+        />
+      )}
 
-      {/* Generic Confirm Delete Modal */}
-      <ConfirmDeleteModal
-        isOpen={!!itemToDelete}
-        title={`¿Eliminar ${itemToDelete?.type === 'GOAL' ? 'Meta de Ahorro' : 'Título / FCI'}?`}
-        description={`¿Estás seguro de que deseas eliminar "${itemToDelete?.name}"? Esta acción no se puede deshacer.`}
-        isDeleting={deleteGoalMutation.isPending || deleteAssetMutation.isPending}
-        onConfirm={handleConfirmDelete}
-        onClose={() => setItemToDelete(null)}
-      />
+      {isNewQuoteOpen && (
+        <NewCurrencyQuoteModal isOpen={isNewQuoteOpen} onClose={() => setIsNewQuoteOpen(false)} />
+      )}
 
-      {/* Action Modals */}
-      <NewSavingsGoalModal
-        isOpen={isNewGoalOpen}
-        onClose={() => {
-          setIsNewGoalOpen(false);
-          setGoalToEdit(null);
-        }}
-        goalToEdit={goalToEdit}
-      />
-      <AddContributionModal
-        goal={selectedGoalForContribution}
-        isOpen={!!selectedGoalForContribution}
-        onClose={() => setSelectedGoalForContribution(null)}
-      />
-      <NewBrokerModal isOpen={isNewBrokerOpen} onClose={() => setIsNewBrokerOpen(false)} />
-      <BrokerTxModal
-        broker={selectedBrokerForTx}
-        isOpen={!!selectedBrokerForTx}
-        onClose={() => setSelectedBrokerForTx(null)}
-      />
-      <NewCurrencyQuoteModal isOpen={isNewQuoteOpen} onClose={() => setIsNewQuoteOpen(false)} />
-      <NewInvestmentAssetModal
-        isOpen={isNewAssetOpen}
-        onClose={() => {
-          setIsNewAssetOpen(false);
-          setAssetToEdit(null);
-        }}
-        assetToEdit={assetToEdit}
-      />
+      {isNewAssetOpen && (
+        <NewInvestmentAssetModal
+          isOpen={isNewAssetOpen}
+          onClose={() => {
+            setIsNewAssetOpen(false);
+            setAssetToEdit(null);
+          }}
+          assetToEdit={assetToEdit}
+        />
+      )}
+
+      {itemToDelete && (
+        <ConfirmDeleteModal
+          isOpen={!!itemToDelete}
+          title={`Eliminar ${itemToDelete.type === 'GOAL' ? 'Meta de Ahorro' : 'Título de Inversión'}`}
+          description={`¿Estás seguro de que deseas eliminar "${itemToDelete.name}"? Esta acción no se puede deshacer.`}
+          isDeleting={deleteGoalMutation.isPending || deleteAssetMutation.isPending}
+          onConfirm={handleConfirmDelete}
+          onClose={() => setItemToDelete(null)}
+        />
+      )}
     </div>
   );
 };

@@ -4,8 +4,8 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 > [!IMPORTANT]
 > **Aviso de Estado de Validación de Usuario:**
-> - **Fases 1, 2 y 3:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El backend, frontend y las funcionalidades de finanzas/gastos 50/50 están totalmente probadas y aprobadas en uso real.
-> - **Fases 4 y 5:** 🟡 **IMPLEMENTADAS EN CÓDIGO PERO PENDIENTES DE VALIDACIÓN FUNCIONAL POR EL USUARIO.** Toda la arquitectura, modelos, endpoints, tests de pytest (14/14 pasando) y vistas de React están desarrollados, pero **aún no fueron validados por el usuario en uso continuo**, por lo que están sujetos a revisiones o ajustes de diseño/flujo.
+> - **Fases 1, 2, 3, 4 y 5:** 🟢 **COMPLETADAS Y VALIDADAS POR EL USUARIO.** El backend, frontend, inventario/stock y el módulo de Inversiones/Ahorros están probados, aprobados y desplegados en Raspberry Pi 5.
+> - **Fase 6 (Lista de Compras Inteligente y Registro de Precios):** 🟡 **EN PROCESO DE PLANIFICACIÓN Y DISEÑO.** Enfoque actual para definir el esquema y flujo operativo.
 
 ---
 
@@ -41,10 +41,13 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 ---
 
-## 🟡 Fase 4: Módulo de Inventario & Gestión del Hogar (IMPLEMENTADO - PENDIENTE DE VALIDACIÓN POR USUARIO)
+## ✅ Fase 4: Módulo de Inventario & Gestión del Hogar (COMPLETADO Y VALIDADO)
 - [x] Modelado del esquema PostgreSQL `inventario` (`locations`, `categories`, `items`, `stock_logs`).
-- [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtros y ajuste rápido de stock.
-- [x] Vinculación con lista de compras mediante *"Sugerir por Stock Bajo"*.
+- [x] Interfaz interactiva en `InventarioPage.tsx` con búsqueda, filtros y ajuste rápido de stock (+1/-1).
+- [x] **Modo de Visualización Dual**: Toggle entre vista en Cuadrícula (Cards) y Tabla Condensada con preferencia guardada en `localStorage`.
+- [x] **Historial de Movimientos de Stock (`StockLog`)**: Modal con badges de avatar/usuario, fecha, tipo de movimiento y notas.
+- [x] **Envío Inteligente de Faltantes a Lista de Compras**: Modal con checkboxes, edición de cantidades a comprar y selección/creación de lista de compras.
+- [x] **CRUD Completo**: Ubicaciones físicas (con contador de ítems), Categorías de inventario y Productos (con stock mínimo y vencimientos).
 - [x] **Gestión del Hogar (`HogarPage.tsx`)**:
   - Configurador de color de avatar por usuario con iniciales ("P", "M").
   - CRUD completo de Categorías con bloques de color identificadores.
@@ -54,7 +57,7 @@ Estado actual de avance y guía de tareas para las próximas sesiones de desarro
 
 ---
 
-## 🟡 Fase 5: Inversiones, Ahorros, Títulos & Cotizaciones (IMPLEMENTADO - PENDIENTE DE VALIDACIÓN POR USUARIO)
+## ✅ Fase 5: Inversiones, Ahorros, Títulos & Cotizaciones (COMPLETADO Y VALIDADO EN RPI 5)
 - [x] Registro de Decisión de Arquitectura y Diseño de Dominio ([ADR 0003](docs/adr/0003-inversiones-y-ahorro-domain-design.md)).
 - [x] Migraciones Alembic Multi-esquema Idempotentes:
   - Migración `0004_quotes_and_broker_goals` (estándar Alembic-only, `revision_id <= 32` caracteres).
