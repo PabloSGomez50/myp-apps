@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { X, ArrowRightLeft, UserCheck, Calendar, DollarSign, Tag } from 'lucide-react';
+import { getTodayLocalDateString, toSafeISODate } from '@/utils/date';
 
 interface Props {
   isOpen: boolean;
@@ -13,7 +14,7 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
   const { user, householdMembers: authMembers } = useAuth();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayLocalDateString();
   const [fecha, setFecha] = useState<string>(todayStr);
   const [monto, setMonto] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('Devolución / Reintegro de pareja');
@@ -48,7 +49,7 @@ export const SettlementModal: React.FC<Props> = ({ isOpen, onClose }) => {
       if (!sourceUserId || !targetUserId) throw new Error('Selecciona el usuario emisor y el destinatario');
       if (sourceUserId === targetUserId) throw new Error('El usuario emisor y el destinatario deben ser distintos');
 
-      const isoFecha = new Date(fecha).toISOString();
+      const isoFecha = toSafeISODate(fecha);
 
       return finanzasApi.createSettlement({
         source_user_id: sourceUserId,

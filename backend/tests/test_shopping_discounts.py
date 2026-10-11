@@ -41,11 +41,23 @@ async def test_shopping_list_hierarchical_discounts_and_checkout(client: AsyncCl
     assert cat_res.status_code == 201, cat_res.text
     cat_id = cat_res.json()["id"]
 
-    # 2. Create Shopping List with 20% global discount
+    # 2. Create Supermarket Día & Shopping List with 20% discount
+    sm_res = await client.post(
+        "/api/v1/finanzas/supermarkets",
+        headers=headers,
+        json={"nombre": "Supermercado Día", "descuento_habitual_porcentaje": "20.00"},
+    )
+    assert sm_res.status_code == 201, sm_res.text
+    sm_id = sm_res.json()["id"]
+
     list_res = await client.post(
         "/api/v1/finanzas/shopping/lists",
         headers=headers,
-        json={"nombre": "Supermercado Día", "descuento_general_porcentaje": "20.00"},
+        json={
+            "nombre": "Supermercado Día",
+            "supermarket_id": sm_id,
+            "descuento_general_porcentaje": "20.00",
+        },
     )
     assert list_res.status_code == 201, list_res.text
     list_id = list_res.json()["id"]

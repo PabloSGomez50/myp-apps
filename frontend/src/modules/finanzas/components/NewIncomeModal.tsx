@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { DollarSign, Calendar, User as UserIcon, X, Tag } from 'lucide-react';
+import { getTodayLocalDateString, toSafeISODate } from '@/utils/date';
 
 interface Props {
   isOpen: boolean;
@@ -13,12 +14,10 @@ export const NewIncomeModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
   const { user, householdMembers } = useAuth();
 
-  const getTodayString = () => new Date().toISOString().split('T')[0];
-
   const [userId, setUserId] = useState<string>('');
   const [monto, setMonto] = useState<string>('');
   const [descripcion, setDescripcion] = useState<string>('Sueldo / Ingreso');
-  const [fecha, setFecha] = useState<string>(getTodayString());
+  const [fecha, setFecha] = useState<string>(getTodayLocalDateString());
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const { data: householdData } = useQuery({
@@ -50,7 +49,7 @@ export const NewIncomeModal: React.FC<Props> = ({ isOpen, onClose }) => {
         tipo: 'INCOME',
         monto: parsedMonto,
         descripcion: descripcion || 'Sueldo / Ingreso',
-        fecha: new Date(fecha).toISOString(),
+        fecha: toSafeISODate(fecha),
         es_compartido: false,
       });
     },
@@ -70,7 +69,7 @@ export const NewIncomeModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setUserId('');
     setMonto('');
     setDescripcion('Sueldo / Ingreso');
-    setFecha(getTodayString());
+    setFecha(getTodayLocalDateString());
     setErrorMsg('');
   };
 

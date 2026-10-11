@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy import Enum as SQLEnum
@@ -9,6 +10,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.modules.core.models import User
 
 
 class AccountTypeEnum(StrEnum):
@@ -184,6 +188,7 @@ class Supermarket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Numeric(5, 2), default=Decimal("0.00"), nullable=False
     )
     dia_promocion_habitual: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tipo_descuento: Mapped[str] = mapped_column(String(20), default="ITEM_BY_ITEM", nullable=False)
 
 
 class ShoppingList(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -207,6 +212,7 @@ class ShoppingList(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     descuento_general_porcentaje: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), default=Decimal("0.00"), nullable=False
     )
+    tipo_descuento: Mapped[str] = mapped_column(String(20), default="ITEM_BY_ITEM", nullable=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     supermarket: Mapped["Supermarket | None"] = relationship("Supermarket", lazy="selectin")

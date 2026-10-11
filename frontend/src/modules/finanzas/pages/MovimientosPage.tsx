@@ -9,6 +9,7 @@ import { CsvImportModal } from '../components/CsvImportModal';
 import { SettlementModal } from '../components/SettlementModal';
 import { Receipt, Search, Plus, FileText, Edit3, Trash2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Transaction } from '@/types';
+import { formatTransactionDate, parseTransactionDate } from '@/utils/date';
 
 export const MovimientosPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -99,16 +100,20 @@ export const MovimientosPage: React.FC = () => {
 
       const matchesType =
         !filterType ||
-        (filterType === 'SHARED' && tx.es_compartido) ||
-        (filterType === 'PERSONAL' && !tx.es_compartido) ||
+        (filterType === 'SHARED' && tx.es_compartido && tx.tipo === 'EXPENSE') ||
+        (filterType === 'PERSONAL' && !tx.es_compartido && tx.tipo === 'EXPENSE') ||
+        (filterType === 'INCOME' && tx.tipo === 'INCOME') ||
         (filterType === 'SETTLEMENT' && tx.tipo === 'SETTLEMENT');
 
       // Date Range Filter
       let matchesDate = true;
       if (dateRange.startDate || dateRange.endDate) {
-        const txDate = new Date(tx.fecha);
-        if (dateRange.startDate && txDate < dateRange.startDate) matchesDate = false;
-        if (dateRange.endDate && txDate > dateRange.endDate) matchesDate = false;
+        const parsed = parseTransactionDate(tx.fecha);
+        if (parsed) {
+          const txDay = new Date(parsed.year, parsed.month - 1, parsed.day, 12, 0, 0);
+          if (dateRange.startDate && txDay < dateRange.startDate) matchesDate = false;
+          if (dateRange.endDate && txDay > dateRange.endDate) matchesDate = false;
+        }
       }
 
       return matchesSearch && matchesType && matchesDate;
@@ -242,6 +247,7 @@ export const MovimientosPage: React.FC = () => {
             <option value="">⚖️ Todos los Tipos</option>
             <option value="SHARED">🤝 Compartidos 50/50</option>
             <option value="PERSONAL">👤 Personales</option>
+            <option value="INCOME">💰 Ingresos / Sueldos</option>
             <option value="SETTLEMENT">💸 Devoluciones / Reintegros</option>
           </select>
         </div>
@@ -280,12 +286,13 @@ export const MovimientosPage: React.FC = () => {
                   {paginatedTransactions.map((tx) => {
                     const payerUser = membersList.find((m) => m.id === tx.user_id);
                     const isSettlement = tx.tipo === 'SETTLEMENT';
+                    const isIncome = tx.tipo === 'INCOME';
                     const numMonto = Number(tx.monto) || 0;
 
                     return (
                       <tr key={tx.id} className="hover:bg-slate-800/30 transition">
                         <td className="p-3.5 font-mono text-slate-400">
-                          {tx.fecha ? tx.fecha.split('T')[0] : 'Sin fecha'}
+                          {formatTransactionDate(tx.fecha)}
                         </td>
                         <td className="p-3.5 font-semibold text-white">
                           {tx.descripcion}
@@ -302,10 +309,14 @@ export const MovimientosPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-3.5 font-medium text-slate-300">
-                          {tx.category?.nombre || (isSettlement ? 'Devolución de Pareja' : 'Sin categoría')}
+                          {tx.category?.nombre || (isIncome ? 'Ingreso / Sueldo' : isSettlement ? 'Devolución de Pareja' : 'Sin categoría')}
                         </td>
                         <td className="p-3.5">
-                          {isSettlement ? (
+                          {isIncome ? (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 inline-flex items-center gap-1">
+                              Ingreso
+                            </span>
+                          ) : isSettlement ? (
                             <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 text-[10px] font-bold border border-indigo-500/30">
                               Devolución
                             </span>
@@ -320,7 +331,7 @@ export const MovimientosPage: React.FC = () => {
                           )}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-emerald-400">
-                          ${numMonto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          {isIncome ? '+' : ''}${numMonto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center gap-1">

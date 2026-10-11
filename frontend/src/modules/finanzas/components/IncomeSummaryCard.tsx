@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, User } from '@/types';
 import { DollarSign, Plus, Wallet } from 'lucide-react';
+import { isSameMonthAndYear, formatMonthYear } from '@/utils/date';
 
 interface Props {
   transactions: Transaction[];
@@ -23,8 +24,7 @@ export const IncomeSummaryCard: React.FC<Props> = ({
 
     transactions.forEach((tx) => {
       if (tx.tipo !== 'INCOME') return;
-      const txDate = new Date(tx.fecha);
-      if (txDate.getMonth() + 1 === currentMonth && txDate.getFullYear() === currentYear) {
+      if (isSameMonthAndYear(tx.fecha, currentMonth, currentYear)) {
         const userId = tx.user_id;
         map[userId] = (map[userId] || 0) + (Number(tx.monto) || 0);
       }
@@ -48,7 +48,7 @@ export const IncomeSummaryCard: React.FC<Props> = ({
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-white">Ingresos / Sueldos del Mes</h4>
+            <h4 className="text-sm font-bold text-white">Ingresos / Sueldos ({formatMonthYear(currentMonth, currentYear)})</h4>
             <p className="text-[11px] text-slate-400">Total acumulado del hogar</p>
           </div>
         </div>

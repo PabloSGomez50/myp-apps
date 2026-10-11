@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction } from '@/types';
 import { RefreshCw, ArrowUpRight, ArrowDownLeft, Scale } from 'lucide-react';
+import { isSameMonthAndYear } from '@/utils/date';
 
 interface Props {
   transactions: Transaction[];
@@ -23,8 +24,7 @@ export const SettlementSummaryCard: React.FC<Props> = ({
 
     transactions.forEach((tx) => {
       if (tx.tipo !== 'SETTLEMENT') return;
-      const d = new Date(tx.fecha);
-      if (d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear) {
+      if (isSameMonthAndYear(tx.fecha, currentMonth, currentYear)) {
         const amount = Number(tx.monto) || 0;
         // In settlement transactions, user_id is payer (who sent money)
         if (tx.user_id === memberId) {

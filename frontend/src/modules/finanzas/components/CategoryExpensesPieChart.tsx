@@ -2,9 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Transaction } from '@/types';
 import { PieChart as PieIcon, Calendar } from 'lucide-react';
+import { isSameMonthAndYear, formatMonthYear } from '@/utils/date';
 
 interface Props {
   transactions: Transaction[];
+  selectedMonth?: number;
+  selectedYear?: number;
 }
 
 const CATEGORY_COLORS = [
@@ -20,28 +23,28 @@ const CATEGORY_COLORS = [
   '#e11d48', // rose-600
 ];
 
-export const CategoryExpensesPieChart: React.FC<Props> = ({ transactions }) => {
-  const [timePreset, setTimePreset] = useState<'current_month' | 'last_month' | 'all'>('current_month');
+export const CategoryExpensesPieChart: React.FC<Props> = ({
+  transactions,
+  selectedMonth,
+  selectedYear,
+}) => {
+  const [viewScope, setViewScope] = useState<'month' | 'all'>('month');
+
+  const now = new Date();
+  const activeMonth = selectedMonth || now.getMonth() + 1;
+  const activeYear = selectedYear || now.getFullYear();
+  const monthLabel = formatMonthYear(activeMonth, activeYear);
 
   const filteredExpenses = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
     return transactions.filter((tx) => {
       if (tx.tipo !== 'EXPENSE') return false;
-      const txDate = new Date(tx.fecha);
 
-      if (timePreset === 'current_month') {
-        return txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
-      }
-      if (timePreset === 'last_month') {
-        const lastMonthDate = new Date(currentYear, currentMonth - 1, 1);
-        return txDate.getMonth() === lastMonthDate.getMonth() && txDate.getFullYear() === lastMonthDate.getFullYear();
+      if (viewScope === 'month') {
+        return isSameMonthAndYear(tx.fecha, activeMonth, activeYear);
       }
       return true; // 'all'
     });
-  }, [transactions, timePreset]);
+  }, [transactions, viewScope, activeMonth, activeYear]);
 
   // Aggregate total amount by category
   const pieData = useMemo(() => {
@@ -99,7 +102,9 @@ export const CategoryExpensesPieChart: React.FC<Props> = ({ transactions }) => {
           </div>
           <div>
             <h4 className="text-sm font-bold text-white">Distribución de Gastos por Categoría (%)</h4>
-            <p className="text-[11px] text-slate-400">Total: ${totalExpenseAmount.toLocaleString('es-AR')}</p>
+            <p className="text-[11px] text-slate-400">
+              {viewScope === 'month' ? monthLabel : 'Histórico completo'} · Total: ${totalExpenseAmount.toLocaleString('es-AR')}
+            </p>
           </div>
         </div>
 
@@ -107,28 +112,20 @@ export const CategoryExpensesPieChart: React.FC<Props> = ({ transactions }) => {
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs">
           <Calendar className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
           <button
-            onClick={() => setTimePreset('current_month')}
+            onClick={() => setViewScope('month')}
             className={`px-2.5 py-1 rounded-lg font-medium transition ${
-              timePreset === 'current_month' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+              viewScope === 'month' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Este Mes
+            {monthLabel}
           </button>
           <button
-            onClick={() => setTimePreset('last_month')}
+            onClick={() => setViewScope('all')}
             className={`px-2.5 py-1 rounded-lg font-medium transition ${
-              timePreset === 'last_month' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+              viewScope === 'all' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Mes Anterior
-          </button>
-          <button
-            onClick={() => setTimePreset('all')}
-            className={`px-2.5 py-1 rounded-lg font-medium transition ${
-              timePreset === 'all' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Todo
+            Todo el Historial
           </button>
         </div>
       </div>

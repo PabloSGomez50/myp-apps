@@ -467,9 +467,7 @@ async def checkout_shopping_list(
     return await FinanzasService.checkout_shopping_list(db, user.id, household_id, id, data)
 
 
-@finanzas_router.post(
-    "/shopping/post-checkout-sync", status_code=status.HTTP_200_OK
-)
+@finanzas_router.post("/shopping/post-checkout-sync", status_code=status.HTTP_200_OK)
 async def post_checkout_sync_inventory(
     data: PostCheckoutSyncRequest,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),

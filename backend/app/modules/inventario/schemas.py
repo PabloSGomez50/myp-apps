@@ -124,4 +124,5 @@ class SendToShoppingListItem(BaseModel):
 class SendToShoppingListRequest(BaseModel):
     shopping_list_id: uuid.UUID | None = None
     shopping_list_name: str | None = None
+    supermarket_id: uuid.UUID | None = None
     items: list[SendToShoppingListItem] = Field(..., min_length=1)

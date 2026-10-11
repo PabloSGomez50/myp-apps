@@ -192,6 +192,7 @@ class SupermarketBase(BaseModel):
     color: str = Field(default="emerald", max_length=50)
     descuento_habitual_porcentaje: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
     dia_promocion_habitual: str | None = Field(default=None, max_length=50)
+    tipo_descuento: str = Field(default="ITEM_BY_ITEM", max_length=20)
 
 
 class SupermarketCreate(SupermarketBase):
@@ -204,6 +205,7 @@ class SupermarketUpdate(BaseModel):
     color: str | None = Field(default=None, max_length=50)
     descuento_habitual_porcentaje: Decimal | None = Field(default=None, ge=0, le=100)
     dia_promocion_habitual: str | None = Field(default=None, max_length=50)
+    tipo_descuento: str | None = Field(default=None, max_length=20)
 
 
 class SupermarketOut(SupermarketBase):
@@ -279,6 +281,7 @@ class ShoppingItemOut(ShoppingItemBase):
 class ShoppingListBase(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=100)
     descuento_general_porcentaje: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    tipo_descuento: str = Field(default="ITEM_BY_ITEM", max_length=20)
     supermarket_id: uuid.UUID | None = None
 
 
@@ -289,6 +292,7 @@ class ShoppingListCreate(ShoppingListBase):
 class ShoppingListUpdate(BaseModel):
     nombre: str | None = Field(default=None, min_length=2, max_length=100)
     descuento_general_porcentaje: Decimal | None = Field(default=None, ge=0, le=100)
+    tipo_descuento: str | None = Field(default=None, max_length=20)
     supermarket_id: uuid.UUID | None = None
     estado: str | None = Field(default=None, max_length=20)
     is_completed: bool | None = None
@@ -301,6 +305,8 @@ class ShoppingListOut(ShoppingListBase):
     household_id: uuid.UUID
     estado: str = "ACTIVE"
     is_completed: bool
+    subtotal_bruto: Decimal = Decimal("0.00")
+    monto_descuento_total: Decimal = Decimal("0.00")
     total_con_descuentos: Decimal = Decimal("0.00")
     division_50_50: Decimal = Decimal("0.00")
     supermarket: SupermarketOut | None = None
@@ -313,6 +319,7 @@ class ShoppingCheckoutRequest(BaseModel):
     account_id: uuid.UUID | None = None
     category_id: uuid.UUID
     descripcion: str = "Compra de Supermercado"
+    monto_total_pagado: Decimal | None = Field(default=None, gt=0)
 
 
 class PostCheckoutSyncItem(BaseModel):

@@ -4,6 +4,7 @@ import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { X, Plus, Calendar, UserCheck, Tag, Check, DollarSign, Sparkles } from 'lucide-react';
 import { ExpenseType } from '@/types';
+import { getTodayLocalDateString, toSafeISODate } from '@/utils/date';
 
 interface Props {
   isOpen: boolean;
@@ -14,7 +15,7 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
   const { user, householdMembers } = useAuth();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayLocalDateString();
   const [fecha, setFecha] = useState<string>(todayStr);
   const [selectedUserId, setSelectedUserId] = useState<string>(user?.id || '');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
@@ -107,7 +108,7 @@ export const NewTransactionModal: React.FC<Props> = ({ isOpen, onClose }) => {
         throw new Error('Selecciona el usuario que realizó el pago');
       }
 
-      const isoFecha = new Date(fecha).toISOString();
+      const isoFecha = toSafeISODate(fecha);
 
       if (esCompartido) {
         return finanzasApi.createSplitTransaction({

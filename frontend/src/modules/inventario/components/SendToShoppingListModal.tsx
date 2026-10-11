@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { inventarioApi } from '@/services/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { inventarioApi, finanzasApi } from '@/services/api';
 import { InventoryItem } from '@/types';
 import { X, ShoppingCart, CheckCircle2, AlertCircle, Plus, Minus } from 'lucide-react';
 
@@ -28,6 +28,11 @@ export const SendToShoppingListModal: React.FC<SendToShoppingListModalProps> = (
 }) => {
   const queryClient = useQueryClient();
 
+  const { data: supermarkets = [] } = useQuery({
+    queryKey: ['supermarkets'],
+    queryFn: () => finanzasApi.getSupermarkets(),
+  });
+
   // Initialize selection state: pre-select items with low stock or all low-stock items if passed
   const [selection, setSelection] = useState<ItemSelectionState>(() => {
     const initialState: ItemSelectionState = {};
@@ -47,6 +52,7 @@ export const SendToShoppingListModal: React.FC<SendToShoppingListModalProps> = (
   });
 
   const [shoppingListName, setShoppingListName] = useState<string>('Lista de Compras Automática');
+  const [selectedSupermarketId, setSelectedSupermarketId] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const toggleSelect = (id: string) => {
@@ -100,6 +106,7 @@ export const SendToShoppingListModal: React.FC<SendToShoppingListModalProps> = (
 
       return inventarioApi.sendToShoppingList({
         shopping_list_name: shoppingListName || undefined,
+        supermarket_id: selectedSupermarketId || null,
         items: selectedItems,
       });
     },
@@ -144,16 +151,34 @@ export const SendToShoppingListModal: React.FC<SendToShoppingListModalProps> = (
           </div>
         )}
 
-        {/* Shopping list target input */}
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-300">Nombre de la Lista de Compras</label>
-          <input
-            type="text"
-            value={shoppingListName}
-            onChange={(e) => setShoppingListName(e.target.value)}
-            placeholder="Ej. Supermercado Semana 3"
-            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
-          />
+        {/* Shopping list target input & Supermarket selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Nombre de la Lista</label>
+            <input
+              type="text"
+              value={shoppingListName}
+              onChange={(e) => setShoppingListName(e.target.value)}
+              placeholder="Ej. Supermercado Semana 3"
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300">Supermercado Asignado</label>
+            <select
+              value={selectedSupermarketId}
+              onChange={(e) => setSelectedSupermarketId(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">Sin comercio específico</option>
+              {supermarkets.map((sm) => (
+                <option key={sm.id} value={sm.id}>
+                  {sm.nombre} {sm.descuento_habitual_porcentaje > 0 ? `(-${sm.descuento_habitual_porcentaje}%)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Item List */}

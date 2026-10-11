@@ -65,9 +65,7 @@ async def update_location(
     return await InventarioService.update_location(db, id, household_id, data)
 
 
-@inventario_router.delete(
-    "/locations/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@inventario_router.delete("/locations/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_location(
     id: uuid.UUID,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -117,9 +115,7 @@ async def update_category(
     return await InventarioService.update_category(db, id, household_id, data)
 
 
-@inventario_router.delete(
-    "/categories/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@inventario_router.delete("/categories/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
     id: uuid.UUID,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
@@ -182,9 +178,7 @@ async def update_item(
     return await InventarioService.update_item(db, id, household_id, data)
 
 
-@inventario_router.delete(
-    "/items/{id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@inventario_router.delete("/items/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
     id: uuid.UUID,
     current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),

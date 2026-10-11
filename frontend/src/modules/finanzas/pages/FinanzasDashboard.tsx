@@ -10,18 +10,19 @@ import { NewIncomeModal } from '../components/NewIncomeModal';
 import { CategoryExpensesPieChart } from '../components/CategoryExpensesPieChart';
 import { MonthlyCategoryBarChart } from '../components/MonthlyCategoryBarChart';
 import { IncomeSummaryCard } from '../components/IncomeSummaryCard';
+import { FinanzasKeyMetrics } from '../components/FinanzasKeyMetrics';
+import { isSameMonthAndYear, formatMonthYear } from '@/utils/date';
 import { Transaction } from '@/types';
 import {
-  Wallet,
-  TrendingUp,
-  CreditCard,
   CheckCircle2,
-  ArrowUpRight,
   RefreshCw,
   Plus,
   FileText,
   DollarSign,
   Users,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from 'lucide-react';
 
 export const FinanzasDashboard: React.FC = () => {
@@ -35,8 +36,37 @@ export const FinanzasDashboard: React.FC = () => {
   const [isNewIncomeOpen, setIsNewIncomeOpen] = useState<boolean>(false);
 
   const currentDate = new Date();
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
+  const currentActualMonth = currentDate.getMonth() + 1;
+  const currentActualYear = currentDate.getFullYear();
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentActualMonth);
+  const [selectedYear, setSelectedYear] = useState<number>(currentActualYear);
+
+  const handlePrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear((y) => y + 1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  };
+
+  const handleResetToCurrentMonth = () => {
+    setSelectedMonth(currentActualMonth);
+    setSelectedYear(currentActualYear);
+  };
+
+  const isViewingCurrentMonth = selectedMonth === currentActualMonth && selectedYear === currentActualYear;
+  const selectedMonthName = formatMonthYear(selectedMonth, selectedYear);
 
   // Queries
   const { data: householdData } = useQuery({
@@ -99,15 +129,14 @@ export const FinanzasDashboard: React.FC = () => {
       .filter((tx): tx is Transaction => tx !== null);
   }, [transactions, viewScope]);
 
-  // Calculate Real-Time Metrics for Current Month based on Scope
+  // Calculate Real-Time Metrics for Selected Month based on Scope
   const { totalIncomesMonth, totalExpensesMonth, gastosCompartidosMonth } = useMemo(() => {
     let incTotal = 0;
     let expTotal = 0;
     let sharedTotal = 0;
 
     filteredTransactionsForScope.forEach((tx) => {
-      const d = new Date(tx.fecha);
-      if (d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear) {
+      if (isSameMonthAndYear(tx.fecha, selectedMonth, selectedYear)) {
         const amount = Number(tx.monto) || 0;
         if (tx.tipo === 'INCOME') {
           incTotal += amount;
@@ -125,7 +154,7 @@ export const FinanzasDashboard: React.FC = () => {
       totalExpensesMonth: expTotal,
       gastosCompartidosMonth: sharedTotal,
     };
-  }, [filteredTransactionsForScope, currentMonth, currentYear]);
+  }, [filteredTransactionsForScope, selectedMonth, selectedYear]);
 
   // Calculate Reintegros for Individual Member View
   const reintegrosMonth = useMemo(() => {
@@ -134,8 +163,7 @@ export const FinanzasDashboard: React.FC = () => {
     let received = 0;
     transactions.forEach((tx) => {
       if (tx.tipo !== 'SETTLEMENT') return;
-      const d = new Date(tx.fecha);
-      if (d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear) {
+      if (isSameMonthAndYear(tx.fecha, selectedMonth, selectedYear)) {
         const amount = Number(tx.monto) || 0;
         if (tx.user_id === viewScope) {
           paid += amount;
@@ -145,7 +173,7 @@ export const FinanzasDashboard: React.FC = () => {
       }
     });
     return { paid, received, net: received - paid };
-  }, [transactions, viewScope, currentMonth, currentYear]);
+  }, [transactions, viewScope, selectedMonth, selectedYear]);
 
   // Flujo Libre del Mes = Total Ingresos - Total Gastos Imputables
   const flujoLibreMonth = totalIncomesMonth - totalExpensesMonth;
@@ -203,42 +231,77 @@ export const FinanzasDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* View Scope Selector Bar (Hogar Completo vs Individual Member) */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 w-fit shadow-md">
-        <span className="text-xs font-semibold text-slate-400 px-2 flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5 text-indigo-400" /> Vista:
-        </span>
+      {/* Controls Bar: View Scope (Hogar vs Individual) & Global Month Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* View Scope Selector Bar */}
+        <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 w-fit shadow-md">
+          <span className="text-xs font-semibold text-slate-400 px-2 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-indigo-400" /> Vista:
+          </span>
 
-        <button
-          onClick={() => setViewScope('ALL')}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-            viewScope === 'ALL'
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-          }`}
-        >
-          <span>🏠 Hogar Completo (Consolidado)</span>
-        </button>
-
-        {membersList.map((m) => (
           <button
-            key={m.id}
-            onClick={() => setViewScope(m.id)}
+            onClick={() => setViewScope('ALL')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-              viewScope === m.id
+              viewScope === 'ALL'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <span
-              className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-[9px] text-white flex-shrink-0"
-              style={{ backgroundColor: m.color_avatar || '#16a34a' }}
-            >
-              {m.nombre[0]}
-            </span>
-            <span>Solo {m.nombre} (50/50)</span>
+            <span>🏠 Hogar Completo (Consolidado)</span>
           </button>
-        ))}
+
+          {membersList.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setViewScope(m.id)}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
+                viewScope === m.id
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <span
+                className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-[9px] text-white flex-shrink-0"
+                style={{ backgroundColor: m.color_avatar || '#16a34a' }}
+              >
+                {m.nombre[0]}
+              </span>
+              <span>Solo {m.nombre} (50/50)</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Global Month Selector Bar */}
+        <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md">
+          {!isViewingCurrentMonth && (
+            <button
+              onClick={handleResetToCurrentMonth}
+              className="px-2.5 py-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 rounded-xl hover:bg-emerald-500/10 border border-emerald-500/20 transition ml-1"
+            >
+              Mes Actual
+            </button>
+          )}
+          <button
+            onClick={handlePrevMonth}
+            title="Mes Anterior"
+            className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs font-bold text-white font-mono">
+            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{selectedMonthName}</span>
+          </div>
+
+          <button
+            onClick={handleNextMonth}
+            title="Mes Siguiente"
+            className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Hero: Splitwise Net Balance Banner */}
@@ -269,77 +332,34 @@ export const FinanzasDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Key Metrics Cards (3 for ALL, 4 for Individual View with Reintegros) */}
-      <div className={`grid grid-cols-1 ${viewScope === 'ALL' ? 'sm:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4'} gap-4`}>
-        {/* Flujo Libre del Mes */}
-        <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Flujo Libre del Mes {selectedMemberName ? `(${selectedMemberName})` : ''}</span>
-            <TrendingUp className={`w-4 h-4 ${flujoLibreMonth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
-          </div>
-          <div className={`text-xl font-bold font-mono ${flujoLibreMonth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            ${flujoLibreMonth.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
-          </div>
-          <p className="text-[11px] text-slate-400 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> Ingresos (${totalIncomesMonth.toLocaleString('es-AR')}) - Gastos Imputados (${totalExpensesMonth.toLocaleString('es-AR')})
-          </p>
-        </div>
-
-        {/* Gastos Compartidos (Mes) */}
-        <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Gastos Compartidos (Mes) {selectedMemberName ? `(50%: $${gastosCompartidosMonth.toLocaleString('es-AR')})` : ''}</span>
-            <CreditCard className="w-4 h-4 text-indigo-400" />
-          </div>
-          <div className="text-xl font-bold text-white font-mono">
-            ${gastosCompartidosMonth.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
-          </div>
-          <p className="text-[11px] text-slate-400">Cuota parte del 50% en gastos del hogar</p>
-        </div>
-
-        {/* Reintegros / Devoluciones (Mes) - Shown in Individual View */}
-        {viewScope !== 'ALL' && (
-          <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2 shadow-xl">
-            <div className="flex items-center justify-between text-slate-400 text-xs">
-              <span>Reintegros / Devoluciones (Mes)</span>
-              <RefreshCw className="w-4 h-4 text-indigo-400" />
-            </div>
-            <div className={`text-xl font-bold font-mono ${reintegrosMonth.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ${reintegrosMonth.net.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Pagado: ${reintegrosMonth.paid.toLocaleString('es-AR')} | Ingresado: ${reintegrosMonth.received.toLocaleString('es-AR')}
-            </p>
-          </div>
-        )}
-
-
-        {/* Fondo de Emergencia */}
-        <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Fondo de Emergencia</span>
-            <Wallet className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-xl font-bold text-white font-mono">
-            ${emergencyFund ? emergencyFund.ahorro_actual_emergencia.toLocaleString('es-AR') : '0,0'}
-          </div>
-          <p className="text-[11px] text-emerald-400">
-            Cobertura: <strong>{emergencyFund ? Math.round(emergencyFund.meses_cubiertos_reales * 100) / 100 : '0.0'} meses</strong>
-          </p>
-        </div>
-      </div>
+      {/* Key Metrics Cards Component */}
+      <FinanzasKeyMetrics
+        viewScope={viewScope}
+        selectedMemberName={selectedMemberName}
+        flujoLibreMonth={flujoLibreMonth}
+        totalIncomesMonth={totalIncomesMonth}
+        totalExpensesMonth={totalExpensesMonth}
+        gastosCompartidosMonth={gastosCompartidosMonth}
+        reintegrosMonth={reintegrosMonth}
+        emergencyFund={emergencyFund}
+        selectedMonthName={selectedMonthName}
+      />
 
       {/* Analytics Section: Pie Chart (%) & Income/Settlement Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <CategoryExpensesPieChart transactions={filteredTransactionsForScope} />
+          <CategoryExpensesPieChart
+            transactions={filteredTransactionsForScope}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+          />
         </div>
         <div className="lg:col-span-1 space-y-6">
           <IncomeSummaryCard
             transactions={transactions}
             members={membersList}
-            currentMonth={currentMonth}
-            currentYear={currentYear}
+            currentMonth={selectedMonth}
+            currentYear={selectedYear}
             onAddIncomeClick={() => setIsNewIncomeOpen(true)}
           />
         </div>

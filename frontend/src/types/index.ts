@@ -209,6 +209,8 @@ export interface CoupleBalance {
   summary_text: string;
 }
 
+export type SupermarketDiscountType = 'ITEM_BY_ITEM' | 'CART_TOTAL';
+
 export interface Supermarket {
   id: string;
   household_id: string;
@@ -217,6 +219,7 @@ export interface Supermarket {
   color: string;
   descuento_habitual_porcentaje: number;
   dia_promocion_habitual?: string | null;
+  tipo_descuento?: SupermarketDiscountType;
   created_at?: string;
 }
 
@@ -226,6 +229,7 @@ export interface SupermarketCreate {
   color?: string;
   descuento_habitual_porcentaje?: number;
   dia_promocion_habitual?: string | null;
+  tipo_descuento?: SupermarketDiscountType;
 }
 
 export interface SupermarketUpdate {
@@ -234,6 +238,7 @@ export interface SupermarketUpdate {
   color?: string;
   descuento_habitual_porcentaje?: number;
   dia_promocion_habitual?: string | null;
+  tipo_descuento?: SupermarketDiscountType;
 }
 
 export interface FoodPriceHistory {
@@ -268,9 +273,12 @@ export interface ShoppingList {
   nombre: string;
   estado?: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
   descuento_general_porcentaje: number;
+  tipo_descuento?: SupermarketDiscountType;
   supermarket_id?: string | null;
   supermarket?: Supermarket | null;
   is_completed: boolean;
+  subtotal_bruto?: number;
+  monto_descuento_total?: number;
   total_con_descuentos: number;
   division_50_50: number;
   items: ShoppingItem[];
@@ -280,12 +288,14 @@ export interface ShoppingList {
 export interface ShoppingListCreate {
   nombre: string;
   descuento_general_porcentaje?: number;
+  tipo_descuento?: SupermarketDiscountType;
   supermarket_id?: string | null;
 }
 
 export interface ShoppingListUpdate {
   nombre?: string;
   descuento_general_porcentaje?: number;
+  tipo_descuento?: SupermarketDiscountType;
   supermarket_id?: string | null;
   estado?: string;
   is_completed?: boolean;
@@ -296,6 +306,7 @@ export interface ShoppingCheckoutRequest {
   account_id?: string | null;
   category_id: string;
   descripcion?: string;
+  monto_total_pagado?: number | null;
 }
 
 export interface PostCheckoutSyncItem {
@@ -451,6 +462,7 @@ export interface SendToShoppingListItem {
 export interface SendToShoppingListRequest {
   shopping_list_id?: string | null;
   shopping_list_name?: string | null;
+  supermarket_id?: string | null;
   items: SendToShoppingListItem[];
 }
 

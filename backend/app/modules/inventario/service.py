@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.finanzas.models import ShoppingItem, ShoppingList
+from app.modules.finanzas.models import ShoppingItem, ShoppingList, Supermarket
 from app.modules.inventario.models import (
     InventoryCategory,
     InventoryItem,
@@ -128,12 +128,16 @@ class InventarioService:
 
     @staticmethod
     async def update_category(
-        db: AsyncSession, category_id: uuid.UUID, household_id: uuid.UUID, data: InventoryCategoryUpdate
+        db: AsyncSession,
+        category_id: uuid.UUID,
+        household_id: uuid.UUID,
+        data: InventoryCategoryUpdate,
     ) -> InventoryCategory:
         category = await db.get(InventoryCategory, category_id)
         if not category or category.household_id != household_id:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Categoría de inventario no encontrada."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Categoría de inventario no encontrada.",
             )
 
         if data.nombre is not None:
@@ -254,7 +258,8 @@ class InventarioService:
         item = await db.get(InventoryItem, item_id)
         if not item or item.household_id != household_id:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Producto de inventario no encontrado."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Producto de inventario no encontrado.",
             )
 
         if data.nombre is not None:
@@ -290,9 +295,7 @@ class InventarioService:
         return out_item
 
     @staticmethod
-    async def delete_item(
-        db: AsyncSession, item_id: uuid.UUID, household_id: uuid.UUID
-    ) -> None:
+    async def delete_item(db: AsyncSession, item_id: uuid.UUID, household_id: uuid.UUID) -> None:
         item = await db.get(InventoryItem, item_id)
         if item and item.household_id == household_id:
             await db.delete(item)
@@ -378,14 +381,31 @@ class InventarioService:
 
         if not target_list:
             list_name = data.shopping_list_name or "Reposición de Faltantes Inventario"
+            descuento_general = Decimal("0.00")
+            tipo_descuento = "ITEM_BY_ITEM"
+            if data.supermarket_id:
+                sm = await db.get(Supermarket, data.supermarket_id)
+                if sm and sm.household_id == household_id:
+                    tipo_descuento = sm.tipo_descuento
+                    descuento_general = sm.descuento_habitual_porcentaje
+
             target_list = ShoppingList(
                 household_id=household_id,
                 nombre=list_name.strip(),
-                descuento_general_porcentaje=Decimal("0.00"),
+                descuento_general_porcentaje=descuento_general,
+                tipo_descuento=tipo_descuento,
+                supermarket_id=data.supermarket_id,
             )
             db.add(target_list)
             await db.commit()
             await db.refresh(target_list)
+        elif data.supermarket_id and not target_list.supermarket_id:
+            sm = await db.get(Supermarket, data.supermarket_id)
+            if sm and sm.household_id == household_id:
+                target_list.supermarket_id = sm.id
+                target_list.tipo_descuento = sm.tipo_descuento
+                if target_list.descuento_general_porcentaje == Decimal("0.00"):
+                    target_list.descuento_general_porcentaje = sm.descuento_habitual_porcentaje
 
         for item_data in data.items:
             s_item = ShoppingItem(
@@ -395,6 +415,7 @@ class InventarioService:
                 cantidad=item_data.cantidad,
                 descuento_especifico_porcentaje=None,
                 comprado=False,
+                inventory_item_id=item_data.item_id,
             )
             db.add(s_item)
 

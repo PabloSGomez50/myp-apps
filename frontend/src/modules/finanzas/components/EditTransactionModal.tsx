@@ -4,6 +4,7 @@ import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { X, Calendar, UserCheck, Tag, Edit3 } from 'lucide-react';
 import { Transaction } from '@/types';
+import { getTodayLocalDateString, toSafeISODate, parseTransactionDate } from '@/utils/date';
 
 interface Props {
   transaction: Transaction | null;
@@ -35,7 +36,18 @@ export const EditTransactionModal: React.FC<Props> = ({ transaction, isOpen, onC
 
   useEffect(() => {
     if (transaction) {
-      setFecha(transaction.fecha ? transaction.fecha.split('T')[0] : new Date().toISOString().split('T')[0]);
+      if (transaction.fecha) {
+        const parsed = parseTransactionDate(transaction.fecha);
+        if (parsed) {
+          const mStr = parsed.month.toString().padStart(2, '0');
+          const dStr = parsed.day.toString().padStart(2, '0');
+          setFecha(`${parsed.year}-${mStr}-${dStr}`);
+        } else {
+          setFecha(getTodayLocalDateString());
+        }
+      } else {
+        setFecha(getTodayLocalDateString());
+      }
       setDescripcion(transaction.descripcion || '');
       setMonto(transaction.monto ? transaction.monto.toString() : '');
       setSelectedUserId(transaction.user_id || '');
@@ -58,7 +70,7 @@ export const EditTransactionModal: React.FC<Props> = ({ transaction, isOpen, onC
       }
 
       return finanzasApi.updateTransaction(transaction.id, {
-        fecha: new Date(fecha).toISOString(),
+        fecha: toSafeISODate(fecha),
         descripcion,
         monto: montoNum,
         user_id: selectedUserId,

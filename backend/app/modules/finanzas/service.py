@@ -48,7 +48,6 @@ from app.modules.finanzas.schemas import (
     CsvPreviewRow,
     CurrencyQuoteCreate,
     EmergencyFundCalculationOut,
-    FoodPriceHistoryOut,
     GoalContributionCreate,
     GoalContributionOut,
     InvestmentAssetCreate,
@@ -575,6 +574,7 @@ class FinanzasService:
             color=data.color,
             descuento_habitual_porcentaje=data.descuento_habitual_porcentaje,
             dia_promocion_habitual=data.dia_promocion_habitual,
+            tipo_descuento=data.tipo_descuento,
         )
         db.add(supermarket)
         await db.commit()
@@ -582,9 +582,7 @@ class FinanzasService:
         return supermarket
 
     @staticmethod
-    async def get_supermarkets(
-        db: AsyncSession, household_id: uuid.UUID
-    ) -> list[Supermarket]:
+    async def get_supermarkets(db: AsyncSession, household_id: uuid.UUID) -> list[Supermarket]:
         result = await db.execute(
             select(Supermarket)
             .where(Supermarket.household_id == household_id)
@@ -594,7 +592,10 @@ class FinanzasService:
 
     @staticmethod
     async def update_supermarket(
-        db: AsyncSession, supermarket_id: uuid.UUID, household_id: uuid.UUID, data: SupermarketUpdate
+        db: AsyncSession,
+        supermarket_id: uuid.UUID,
+        household_id: uuid.UUID,
+        data: SupermarketUpdate,
     ) -> Supermarket:
         supermarket = await db.get(Supermarket, supermarket_id)
         if not supermarket or supermarket.household_id != household_id:
@@ -658,10 +659,27 @@ class FinanzasService:
     async def create_shopping_list(
         db: AsyncSession, household_id: uuid.UUID, data: ShoppingListCreate
     ) -> ShoppingListOut:
+        tipo_descuento = data.tipo_descuento or "ITEM_BY_ITEM"
+        descuento_general = (
+            data.descuento_general_porcentaje if data.supermarket_id else Decimal("0.00")
+        )
+
+        if data.supermarket_id:
+            sm = await db.get(Supermarket, data.supermarket_id)
+            if sm and sm.household_id == household_id:
+                if not data.tipo_descuento or data.tipo_descuento == "ITEM_BY_ITEM":
+                    tipo_descuento = sm.tipo_descuento
+                if (
+                    data.descuento_general_porcentaje is None
+                    or data.descuento_general_porcentaje == Decimal("0.00")
+                ) and sm.descuento_habitual_porcentaje > Decimal("0.00"):
+                    descuento_general = sm.descuento_habitual_porcentaje
+
         shopping_list = ShoppingList(
             household_id=household_id,
             nombre=data.nombre.strip(),
-            descuento_general_porcentaje=data.descuento_general_porcentaje,
+            descuento_general_porcentaje=descuento_general,
+            tipo_descuento=tipo_descuento,
             supermarket_id=data.supermarket_id,
         )
         db.add(shopping_list)
@@ -684,8 +702,8 @@ class FinanzasService:
         lists = list(result.scalars().all())
 
         out_lists = []
-        for l in lists:
-            out_lists.append(await FinanzasService.get_shopping_list_details(db, l.id))
+        for s_list in lists:
+            out_lists.append(await FinanzasService.get_shopping_list_details(db, s_list.id))
         return out_lists
 
     @staticmethod
@@ -699,6 +717,25 @@ class FinanzasService:
             )
 
         update_dict = data.model_dump(exclude_unset=True)
+
+        # If supermarket_id is updated, sync tipo_descuento and default discount if not explicitly set
+        if "supermarket_id" in update_dict and "tipo_descuento" not in update_dict:
+            new_sm_id = update_dict["supermarket_id"]
+            if new_sm_id:
+                sm = await db.get(Supermarket, new_sm_id)
+                if sm and sm.household_id == household_id:
+                    shopping_list.tipo_descuento = sm.tipo_descuento
+                    if (
+                        shopping_list.descuento_general_porcentaje == Decimal("0.00")
+                        and sm.descuento_habitual_porcentaje > Decimal("0.00")
+                        and "descuento_general_porcentaje" not in update_dict
+                    ):
+                        shopping_list.descuento_general_porcentaje = (
+                            sm.descuento_habitual_porcentaje
+                        )
+            else:
+                shopping_list.descuento_general_porcentaje = Decimal("0.00")
+
         for key, value in update_dict.items():
             if isinstance(value, str):
                 value = value.strip()
@@ -788,44 +825,125 @@ class FinanzasService:
             )
 
         item_outs = []
-        total_con_descuentos = Decimal("0.00")
+        subtotal_bruto = Decimal("0.00")
+        has_supermarket = shopping_list.supermarket_id is not None
+        is_cart_total = shopping_list.tipo_descuento == "CART_TOTAL"
 
-        for item in shopping_list.items:
-            # Hierarchical discount rule:
-            # If item has specific discount -> use it. Otherwise use list general discount.
-            discount = (
-                item.descuento_especifico_porcentaje
-                if item.descuento_especifico_porcentaje is not None
-                else shopping_list.descuento_general_porcentaje
-            )
-            base_total = item.precio_unitario * Decimal(item.cantidad)
-            final_price = base_total * (Decimal("1.00") - (discount / Decimal("100.00")))
-            total_con_descuentos += final_price
+        if not has_supermarket:
+            # Rule: If no supermarket is assigned, no discount should be applied
+            total_con_descuentos = Decimal("0.00")
+            for item in shopping_list.items:
+                base_total = item.precio_unitario * Decimal(item.cantidad)
+                subtotal_bruto += base_total
+                total_con_descuentos += base_total
 
-            item_outs.append(
-                ShoppingItemOut(
-                    id=item.id,
-                    list_id=item.list_id,
-                    nombre=item.nombre,
-                    precio_unitario=item.precio_unitario,
-                    cantidad=item.cantidad,
-                    descuento_especifico_porcentaje=item.descuento_especifico_porcentaje,
-                    comprado=item.comprado,
-                    inventory_item_id=item.inventory_item_id,
-                    descuento_aplicado_porcentaje=discount,
-                    precio_final_calculado=final_price,
+                item_outs.append(
+                    ShoppingItemOut(
+                        id=item.id,
+                        list_id=item.list_id,
+                        nombre=item.nombre,
+                        precio_unitario=item.precio_unitario,
+                        cantidad=item.cantidad,
+                        descuento_especifico_porcentaje=None,
+                        comprado=item.comprado,
+                        inventory_item_id=item.inventory_item_id,
+                        descuento_aplicado_porcentaje=Decimal("0.00"),
+                        precio_final_calculado=base_total,
+                    )
                 )
+            monto_descuento_total = Decimal("0.00")
+        elif is_cart_total:
+            # CART_TOTAL logic (e.g. Carrefour):
+            # Line items keep specific discount if defined.
+            # Cart discount applies to items without specific discount.
+            subtotal_eligible_for_cart_discount = Decimal("0.00")
+            items_final_subtotal = Decimal("0.00")
+
+            for item in shopping_list.items:
+                base_total = item.precio_unitario * Decimal(item.cantidad)
+                subtotal_bruto += base_total
+
+                if (
+                    item.descuento_especifico_porcentaje is not None
+                    and item.descuento_especifico_porcentaje > Decimal("0.00")
+                ):
+                    disc = item.descuento_especifico_porcentaje
+                    final_price = base_total * (Decimal("1.00") - (disc / Decimal("100.00")))
+                    items_final_subtotal += final_price
+                else:
+                    disc = Decimal("0.00")
+                    final_price = base_total
+                    subtotal_eligible_for_cart_discount += base_total
+                    items_final_subtotal += base_total
+
+                item_outs.append(
+                    ShoppingItemOut(
+                        id=item.id,
+                        list_id=item.list_id,
+                        nombre=item.nombre,
+                        precio_unitario=item.precio_unitario,
+                        cantidad=item.cantidad,
+                        descuento_especifico_porcentaje=item.descuento_especifico_porcentaje,
+                        comprado=item.comprado,
+                        inventory_item_id=item.inventory_item_id,
+                        descuento_aplicado_porcentaje=disc,
+                        precio_final_calculado=final_price,
+                    )
+                )
+
+            cart_discount_amount = subtotal_eligible_for_cart_discount * (
+                shopping_list.descuento_general_porcentaje / Decimal("100.00")
             )
+            total_con_descuentos = items_final_subtotal - cart_discount_amount
+            monto_descuento_total = subtotal_bruto - total_con_descuentos
+        else:
+            # ITEM_BY_ITEM logic (e.g. Coto):
+            # Hierarchical discount rule: specific discount overrides general list discount.
+            total_con_descuentos = Decimal("0.00")
+            for item in shopping_list.items:
+                base_total = item.precio_unitario * Decimal(item.cantidad)
+                subtotal_bruto += base_total
+
+                discount = (
+                    item.descuento_especifico_porcentaje
+                    if item.descuento_especifico_porcentaje is not None
+                    else shopping_list.descuento_general_porcentaje
+                )
+                final_price = base_total * (Decimal("1.00") - (discount / Decimal("100.00")))
+                total_con_descuentos += final_price
+
+                item_outs.append(
+                    ShoppingItemOut(
+                        id=item.id,
+                        list_id=item.list_id,
+                        nombre=item.nombre,
+                        precio_unitario=item.precio_unitario,
+                        cantidad=item.cantidad,
+                        descuento_especifico_porcentaje=item.descuento_especifico_porcentaje,
+                        comprado=item.comprado,
+                        inventory_item_id=item.inventory_item_id,
+                        descuento_aplicado_porcentaje=discount,
+                        precio_final_calculado=final_price,
+                    )
+                )
+            monto_descuento_total = subtotal_bruto - total_con_descuentos
 
         return ShoppingListOut(
             id=shopping_list.id,
             household_id=shopping_list.household_id,
             nombre=shopping_list.nombre,
             estado=shopping_list.estado,
-            descuento_general_porcentaje=shopping_list.descuento_general_porcentaje,
+            descuento_general_porcentaje=shopping_list.descuento_general_porcentaje
+            if has_supermarket
+            else Decimal("0.00"),
+            tipo_descuento=shopping_list.tipo_descuento,
             supermarket_id=shopping_list.supermarket_id,
-            supermarket=SupermarketOut.model_validate(shopping_list.supermarket) if shopping_list.supermarket else None,
+            supermarket=SupermarketOut.model_validate(shopping_list.supermarket)
+            if shopping_list.supermarket
+            else None,
             is_completed=shopping_list.is_completed,
+            subtotal_bruto=subtotal_bruto,
+            monto_descuento_total=monto_descuento_total,
             total_con_descuentos=total_con_descuentos,
             division_50_50=total_con_descuentos / Decimal("2.00"),
             items=item_outs,
@@ -847,13 +965,18 @@ class FinanzasService:
             )
 
         payer_id = data.user_id if data.user_id else user_id
+        final_monto = (
+            data.monto_total_pagado
+            if data.monto_total_pagado is not None and data.monto_total_pagado > Decimal("0.00")
+            else list_details.total_con_descuentos
+        )
 
         # Create 50/50 Shared Expense Transaction
         tx_data = TransactionSplitCreate(
             account_id=data.account_id,
             user_id=payer_id,
             category_id=data.category_id,
-            monto=list_details.total_con_descuentos,
+            monto=final_monto,
             moneda="ARS",
             descripcion=f"{data.descripcion} ({list_details.nombre})",
             fecha=datetime.now(UTC),
@@ -878,7 +1001,9 @@ class FinanzasService:
                         if item.descuento_especifico_porcentaje is not None
                         else list_obj.descuento_general_porcentaje
                     )
-                    effective_price = item.precio_unitario * (Decimal("1.00") - (discount / Decimal("100.00")))
+                    effective_price = item.precio_unitario * (
+                        Decimal("1.00") - (discount / Decimal("100.00"))
+                    )
 
                     history_entry = FoodPriceHistory(
                         household_id=household_id,
@@ -1145,8 +1270,12 @@ class FinanzasService:
             select(Category.id).where(
                 Category.household_id == household_id,
                 Category.tipo_gasto.in_(
-                    [ExpenseTypeEnum.FIXED_HOUSEHOLD, ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
-                     ExpenseTypeEnum.FIXED_PERSONAL, ExpenseTypeEnum.VARIABLE_PERSONAL]
+                    [
+                        ExpenseTypeEnum.FIXED_HOUSEHOLD,
+                        ExpenseTypeEnum.VARIABLE_HOUSEHOLD,
+                        ExpenseTypeEnum.FIXED_PERSONAL,
+                        ExpenseTypeEnum.VARIABLE_PERSONAL,
+                    ]
                 ),
             )
         )

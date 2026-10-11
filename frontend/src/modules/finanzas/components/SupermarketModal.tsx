@@ -37,6 +37,7 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [color, setColor] = useState<string>('emerald');
   const [descuentoHabitual, setDescuentoHabitual] = useState<string>('0');
   const [diaPromocion, setDiaPromocion] = useState<string>('');
+  const [tipoDescuento, setTipoDescuento] = useState<'ITEM_BY_ITEM' | 'CART_TOTAL'>('ITEM_BY_ITEM');
 
   const { data: supermarkets = [], isLoading } = useQuery({
     queryKey: ['supermarkets'],
@@ -74,6 +75,7 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setColor('emerald');
     setDescuentoHabitual('0');
     setDiaPromocion('');
+    setTipoDescuento('ITEM_BY_ITEM');
   };
 
   const startEdit = (sm: Supermarket) => {
@@ -82,6 +84,7 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setColor(sm.color || 'emerald');
     setDescuentoHabitual(String(sm.descuento_habitual_porcentaje || 0));
     setDiaPromocion(sm.dia_promocion_habitual || '');
+    setTipoDescuento(sm.tipo_descuento || 'ITEM_BY_ITEM');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,6 +97,7 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
       color,
       descuento_habitual_porcentaje: parseFloat(descuentoHabitual) || 0,
       dia_promocion_habitual: diaPromocion.trim() || null,
+      tipo_descuento: tipoDescuento,
     };
 
     if (editingId) {
@@ -210,6 +214,42 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   ))}
                 </div>
               </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Modalidad de Descuento
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTipoDescuento('ITEM_BY_ITEM')}
+                    className={`p-2.5 rounded-xl border text-left transition text-xs cursor-pointer ${
+                      tipoDescuento === 'ITEM_BY_ITEM'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-white'
+                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-slate-200">Por Producto (ej. Coto)</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      El descuento se aplica individualmente a cada ítem de la lista.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoDescuento('CART_TOTAL')}
+                    className={`p-2.5 rounded-xl border text-left transition text-xs cursor-pointer ${
+                      tipoDescuento === 'CART_TOTAL'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-white'
+                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-semibold text-slate-200">Al Total del Ticket (ej. Carrefour)</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      El descuento se calcula al final sobre el importe total de la compra.
+                    </div>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">
@@ -253,12 +293,15 @@ export const SupermarketModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       </div>
                       <div>
                         <div className="font-semibold text-sm text-white">{sm.nombre}</div>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-0.5">
                           {sm.descuento_habitual_porcentaje > 0 && (
                             <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-medium">
                               -{sm.descuento_habitual_porcentaje}%
                             </span>
                           )}
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                            {sm.tipo_descuento === 'CART_TOTAL' ? 'Al Total' : 'Por Producto'}
+                          </span>
                           {sm.dia_promocion_habitual && (
                             <span className="flex items-center gap-1 text-slate-400">
                               <Calendar className="w-3 h-3 text-slate-400" />

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Transaction } from '@/types';
 import { BarChart3, Filter, Layers, BarChart2 } from 'lucide-react';
+import { parseTransactionDate } from '@/utils/date';
 
 interface Props {
   transactions: Transaction[];
@@ -68,10 +69,9 @@ export const MonthlyCategoryBarChart: React.FC<Props> = ({ transactions }) => {
     // Populate data from transactions
     transactions.forEach((tx) => {
       if (tx.tipo !== 'EXPENSE') return;
-      const txDate = new Date(tx.fecha);
-      const txYear = txDate.getFullYear();
-      const txMonth = txDate.getMonth();
-      const txMonthKey = `${txYear}-${(txMonth + 1).toString().padStart(2, '0')}`;
+      const parsed = parseTransactionDate(tx.fecha);
+      if (!parsed) return;
+      const txMonthKey = `${parsed.year}-${parsed.month.toString().padStart(2, '0')}`;
 
       const slot = result.find((s) => s.monthKey === txMonthKey);
       if (slot) {

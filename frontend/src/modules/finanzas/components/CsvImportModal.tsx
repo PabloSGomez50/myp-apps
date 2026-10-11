@@ -4,6 +4,7 @@ import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { X, UploadCloud, FileText, CheckCircle2, AlertTriangle, Tag } from 'lucide-react';
 import { CsvPreviewRow } from '@/types';
+import { toSafeISODate } from '@/utils/date';
 
 interface Props {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export const CsvImportModal: React.FC<Props> = ({ isOpen, onClose }) => {
       }
 
       const rowsToImport = previewRows.map((r) => ({
-        fecha: new Date(r.fecha).toISOString(),
+        fecha: toSafeISODate(r.fecha),
         concepto: r.concepto,
         monto: r.monto,
         user_id: r.user_id!,
