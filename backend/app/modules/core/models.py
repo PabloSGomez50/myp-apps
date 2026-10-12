@@ -1,9 +1,9 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, String
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -44,6 +44,9 @@ class Household(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         SQLEnum(CurrencyEnum, name="currency_enum", schema="core"),
         default=CurrencyEnum.ARS,
         nullable=False,
+    )
+    default_split_ratios: Mapped[dict | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
 
     members: Mapped[list["HouseholdMember"]] = relationship(

@@ -9,7 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.core.models import HouseholdMember
+from app.modules.core.models import Household, HouseholdMember
 from app.modules.finanzas.models import (
     Account,
     Broker,
@@ -22,6 +22,7 @@ from app.modules.finanzas.models import (
     FoodPriceHistory,
     GoalContribution,
     InvestmentAsset,
+    MonthlySplitRule,
     SavingsGoal,
     ShoppingItem,
     ShoppingList,
@@ -52,6 +53,7 @@ from app.modules.finanzas.schemas import (
     GoalContributionOut,
     InvestmentAssetCreate,
     InvestmentAssetUpdate,
+    MonthlySplitRuleCreate,
     PostCheckoutSyncRequest,
     SavingsGoalCreate,
     SavingsGoalOut,
@@ -64,6 +66,7 @@ from app.modules.finanzas.schemas import (
     ShoppingListCreate,
     ShoppingListOut,
     ShoppingListUpdate,
+    SuggestedSplitOut,
     SupermarketCreate,
     SupermarketOut,
     SupermarketUpdate,
@@ -275,6 +278,17 @@ class FinanzasService:
             elif data.tipo == TransactionTypeEnum.INCOME:
                 account.saldo_actual += data.monto
 
+        # Determine split_ratio if shared expense
+        split_ratio = data.split_ratio
+        if data.es_compartido and (split_ratio is None or split_ratio == Decimal("0.50")):
+            tx_date = data.fecha or datetime.now(UTC)
+            effective_ratios, _ = await FinanzasService.get_effective_split_ratio(
+                db, household_id, tx_date.year, tx_date.month
+            )
+            split_ratio = FinanzasService.calculate_counterpart_split_ratio(
+                effective_ratios, payer_user_id
+            )
+
         transaction = Transaction(
             household_id=household_id,
             account_id=data.account_id,
@@ -284,7 +298,7 @@ class FinanzasService:
             monto=data.monto,
             moneda=data.moneda,
             es_compartido=data.es_compartido,
-            split_ratio=data.split_ratio,
+            split_ratio=split_ratio,
             tipo_cambio=data.tipo_cambio,
             descripcion=data.descripcion,
             fecha=data.fecha,
@@ -299,6 +313,13 @@ class FinanzasService:
         db: AsyncSession, user_id: uuid.UUID, household_id: uuid.UUID, data: TransactionSplitCreate
     ) -> Transaction:
         payer_user_id = data.user_id if data.user_id else user_id
+        tx_date = data.fecha or datetime.now(UTC)
+        effective_ratios, _ = await FinanzasService.get_effective_split_ratio(
+            db, household_id, tx_date.year, tx_date.month
+        )
+        counterpart_ratio = FinanzasService.calculate_counterpart_split_ratio(
+            effective_ratios, payer_user_id
+        )
         create_data = TransactionCreate(
             account_id=data.account_id,
             user_id=payer_user_id,
@@ -307,7 +328,7 @@ class FinanzasService:
             monto=data.monto,
             moneda=data.moneda,
             es_compartido=True,
-            split_ratio=Decimal("0.50"),
+            split_ratio=counterpart_ratio,
             descripcion=data.descripcion,
             fecha=data.fecha,
         )
@@ -559,6 +580,238 @@ class FinanzasService:
             partner_name=partner_name,
             summary_text=summary_text,
         )
+
+    # ==========================================================================
+    # Monthly Split Rules & Dynamic Ratios
+    # ==========================================================================
+    @staticmethod
+    async def get_effective_split_ratio(
+        db: AsyncSession, household_id: uuid.UUID, year: int, month: int
+    ) -> tuple[dict[str, float], str]:
+        # 1. Look for explicit monthly rule
+        rule_res = await db.execute(
+            select(MonthlySplitRule).where(
+                MonthlySplitRule.household_id == household_id,
+                MonthlySplitRule.year == year,
+                MonthlySplitRule.month == month,
+            )
+        )
+        rule = rule_res.scalar_one_or_none()
+        if rule and rule.user_ratios:
+            return rule.user_ratios, "MONTHLY_RULE"
+
+        # 2. Look for household default
+        hh_res = await db.execute(select(Household).where(Household.id == household_id))
+        household = hh_res.scalar_one_or_none()
+        if household and household.default_split_ratios:
+            return household.default_split_ratios, "HOUSEHOLD_DEFAULT"
+
+        # 3. Fallback to equal split between household members
+        members_res = await db.execute(
+            select(HouseholdMember).where(HouseholdMember.household_id == household_id)
+        )
+        members = list(members_res.scalars().all())
+        if members:
+            count = len(members)
+            equal_share = round(1.0 / count, 2)
+            default_map = {str(m.user_id): equal_share for m in members}
+            return default_map, "SYSTEM_DEFAULT"
+
+        return {}, "SYSTEM_DEFAULT"
+
+    @staticmethod
+    def calculate_counterpart_split_ratio(
+        user_ratios: dict[str, float], payer_user_id: uuid.UUID
+    ) -> Decimal:
+        payer_key = str(payer_user_id)
+        if not user_ratios:
+            return Decimal("0.50")
+
+        # In a 2-member household, if payer has share P, partner has share 1 - P.
+        # Partner owes their share (1 - P) to payer.
+        if payer_key in user_ratios:
+            payer_share = float(user_ratios[payer_key])
+            counterpart_share = max(0.0, min(1.0, 1.0 - payer_share))
+            return Decimal(str(round(counterpart_share, 2)))
+
+        other_shares = [v for k, v in user_ratios.items() if k != payer_key]
+        if other_shares:
+            return Decimal(str(round(other_shares[0], 2)))
+
+        return Decimal("0.50")
+
+    @staticmethod
+    async def get_monthly_split_rules(
+        db: AsyncSession, household_id: uuid.UUID
+    ) -> list[MonthlySplitRule]:
+        result = await db.execute(
+            select(MonthlySplitRule)
+            .where(MonthlySplitRule.household_id == household_id)
+            .order_by(MonthlySplitRule.year.desc(), MonthlySplitRule.month.desc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def create_or_update_monthly_split_rule(
+        db: AsyncSession, household_id: uuid.UUID, data: MonthlySplitRuleCreate
+    ) -> MonthlySplitRule:
+        result = await db.execute(
+            select(MonthlySplitRule).where(
+                MonthlySplitRule.household_id == household_id,
+                MonthlySplitRule.year == data.year,
+                MonthlySplitRule.month == data.month,
+            )
+        )
+        rule = result.scalar_one_or_none()
+        if rule:
+            rule.user_ratios = data.user_ratios
+        else:
+            rule = MonthlySplitRule(
+                household_id=household_id,
+                year=data.year,
+                month=data.month,
+                user_ratios=data.user_ratios,
+            )
+            db.add(rule)
+
+        # Retroactive update for all shared expenses in that month/year
+        txs_res = await db.execute(
+            select(Transaction).where(
+                Transaction.household_id == household_id,
+                Transaction.es_compartido.is_(True),
+                Transaction.tipo == TransactionTypeEnum.EXPENSE,
+                func.extract("year", Transaction.fecha) == data.year,
+                func.extract("month", Transaction.fecha) == data.month,
+            )
+        )
+        txs = list(txs_res.scalars().all())
+        for tx in txs:
+            tx.split_ratio = FinanzasService.calculate_counterpart_split_ratio(
+                data.user_ratios, tx.user_id
+            )
+
+        await db.commit()
+        await db.refresh(rule)
+        return rule
+
+    @staticmethod
+    async def delete_monthly_split_rule(
+        db: AsyncSession, rule_id: uuid.UUID, household_id: uuid.UUID
+    ) -> bool:
+        rule = await db.get(MonthlySplitRule, rule_id)
+        if not rule or rule.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Regla de división no encontrada."
+            )
+
+        target_year = rule.year
+        target_month = rule.month
+
+        await db.delete(rule)
+        await db.flush()
+
+        # Recalculate transactions of that month back to effective fallback
+        fallback_ratios, _ = await FinanzasService.get_effective_split_ratio(
+            db, household_id, target_year, target_month
+        )
+        txs_res = await db.execute(
+            select(Transaction).where(
+                Transaction.household_id == household_id,
+                Transaction.es_compartido.is_(True),
+                Transaction.tipo == TransactionTypeEnum.EXPENSE,
+                func.extract("year", Transaction.fecha) == target_year,
+                func.extract("month", Transaction.fecha) == target_month,
+            )
+        )
+        txs = list(txs_res.scalars().all())
+        for tx in txs:
+            tx.split_ratio = FinanzasService.calculate_counterpart_split_ratio(
+                fallback_ratios, tx.user_id
+            )
+
+        await db.commit()
+        return True
+
+    @staticmethod
+    async def suggest_monthly_split_from_income(
+        db: AsyncSession, household_id: uuid.UUID, year: int, month: int
+    ) -> SuggestedSplitOut:
+        members_res = await db.execute(
+            select(HouseholdMember).where(HouseholdMember.household_id == household_id)
+        )
+        members = list(members_res.scalars().all())
+        if len(members) < 2:
+            return SuggestedSplitOut(
+                year=year,
+                month=month,
+                total_incomes={},
+                suggested_ratios={},
+                is_sufficient=False,
+                message="Se requieren al menos 2 integrantes en el hogar para calcular la división.",
+            )
+
+        incomes: dict[str, float] = {}
+        for m in members:
+            inc_res = await db.execute(
+                select(func.coalesce(func.sum(Transaction.monto), Decimal("0.00"))).where(
+                    Transaction.household_id == household_id,
+                    Transaction.user_id == m.user_id,
+                    Transaction.tipo == TransactionTypeEnum.INCOME,
+                    func.extract("year", Transaction.fecha) == year,
+                    func.extract("month", Transaction.fecha) == month,
+                )
+            )
+            incomes[str(m.user_id)] = float(inc_res.scalar() or Decimal("0.00"))
+
+        total_income = sum(incomes.values())
+        nonzero_members = [uid for uid, inc in incomes.items() if inc > 0]
+
+        if total_income > 0 and len(nonzero_members) >= 2:
+            suggested: dict[str, float] = {}
+            running_sum = 0.0
+            member_ids = list(incomes.keys())
+
+            for i, uid in enumerate(member_ids):
+                if i == len(member_ids) - 1:
+                    suggested[uid] = round(1.0 - running_sum, 2)
+                else:
+                    ratio = round(incomes[uid] / total_income, 2)
+                    suggested[uid] = ratio
+                    running_sum += ratio
+
+            return SuggestedSplitOut(
+                year=year,
+                month=month,
+                total_incomes=incomes,
+                suggested_ratios=suggested,
+                is_sufficient=True,
+                message=f"Sugerencia calculada en base a ${total_income:,.2f} de ingresos combinados.",
+            )
+
+        equal_share = round(1.0 / len(members), 2)
+        fallback_ratios = {str(m.user_id): equal_share for m in members}
+        return SuggestedSplitOut(
+            year=year,
+            month=month,
+            total_incomes=incomes,
+            suggested_ratios=fallback_ratios,
+            is_sufficient=False,
+            message="No hay suficientes ingresos registrados para ambos miembros en este mes.",
+        )
+
+    @staticmethod
+    async def update_household_default_split(
+        db: AsyncSession, household_id: uuid.UUID, default_split_ratios: dict[str, float]
+    ) -> Household:
+        hh = await db.get(Household, household_id)
+        if not hh:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Hogar no encontrado."
+            )
+        hh.default_split_ratios = default_split_ratios
+        await db.commit()
+        await db.refresh(hh)
+        return hh
 
     # ==========================================================================
     # Supermarkets & Stores
@@ -1719,7 +1972,20 @@ class FinanzasService:
                 db.add(new_m)
 
         count = 0
+        cache_ratios: dict[tuple[int, int], dict[str, float]] = {}
         for r in data.rows:
+            split_ratio = Decimal("0.50")
+            if r.es_compartido:
+                ym_key = (r.fecha.year, r.fecha.month)
+                if ym_key not in cache_ratios:
+                    eff_ratios, _ = await FinanzasService.get_effective_split_ratio(
+                        db, household_id, ym_key[0], ym_key[1]
+                    )
+                    cache_ratios[ym_key] = eff_ratios
+                split_ratio = FinanzasService.calculate_counterpart_split_ratio(
+                    cache_ratios[ym_key], r.user_id
+                )
+
             tx = Transaction(
                 household_id=household_id,
                 account_id=None,
@@ -1729,7 +1995,7 @@ class FinanzasService:
                 monto=r.monto,
                 moneda="ARS",
                 es_compartido=r.es_compartido,
-                split_ratio=Decimal("0.50"),
+                split_ratio=split_ratio,
                 tipo_cambio=Decimal("1.0000"),
                 descripcion=r.concepto,
                 fecha=r.fecha,

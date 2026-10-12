@@ -140,6 +140,12 @@ export const ShoppingListPage: React.FC = () => {
     queryFn: () => inventarioApi.getCategories(),
   });
 
+  const now = new Date();
+  const { data: effectiveSplit } = useQuery({
+    queryKey: ['effective-split', now.getFullYear(), now.getMonth() + 1],
+    queryFn: () => finanzasApi.getEffectiveSplitRule(now.getFullYear(), now.getMonth() + 1),
+  });
+
   const filteredInventoryItems = useMemo(() => {
     if (!inventorySearchQuery.trim()) return inventoryItems;
     const q = inventorySearchQuery.toLowerCase();
@@ -818,9 +824,28 @@ export const ShoppingListPage: React.FC = () => {
                   <div className="text-2xl font-black text-white font-mono">
                     ${Number(currentList.total_con_descuentos).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                   </div>
-                  <span className="text-[11px] text-slate-400">
-                    División 50/50: <strong>${Number(currentList.division_50_50).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong> cada uno
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[11px] text-slate-400">
+                    <span>División estimada:</span>
+                    {membersList.map((m) => {
+                      const ratio = effectiveSplit?.user_ratios?.[m.id] ?? 0.5;
+                      const shareAmount = Number(currentList.total_con_descuentos) * ratio;
+                      const pct = Math.round(ratio * 100);
+                      return (
+                        <span key={m.id} className="inline-flex items-center gap-1 font-medium text-slate-300">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full inline-flex items-center justify-center font-bold text-[8px] text-white"
+                            style={{ backgroundColor: m.color_avatar || '#6366f1' }}
+                          >
+                            {m.nombre[0]}
+                          </span>
+                          {m.nombre} ({pct}%):{' '}
+                          <strong className="text-white font-mono">
+                            ${shareAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </strong>
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -1591,7 +1616,7 @@ export const ShoppingListPage: React.FC = () => {
                   disabled={checkoutMutation.isPending}
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
                 >
-                  {checkoutMutation.isPending ? 'Procesando...' : 'Confirmar Checkout 50/50'}
+                  {checkoutMutation.isPending ? 'Procesando...' : 'Confirmar y Registrar Compra'}
                 </button>
               </div>
             </form>

@@ -13,6 +13,7 @@ export interface Household {
   id: string;
   nombre: string;
   moneda_principal: 'ARS' | 'USD';
+  default_split_ratios?: Record<string, number> | null;
   members?: HouseholdMember[];
   created_at: string;
 }
@@ -464,6 +465,34 @@ export interface SendToShoppingListRequest {
   shopping_list_name?: string | null;
   supermarket_id?: string | null;
   items: SendToShoppingListItem[];
+}
+
+export interface MonthlySplitRule {
+  id: string;
+  household_id: string;
+  year: number;
+  month: number;
+  user_ratios: Record<string, number>;
+  nota?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EffectiveSplitRatio {
+  source: 'MONTHLY_RULE' | 'HOUSEHOLD_DEFAULT' | 'EQUAL_SPLIT';
+  // ratios: Record<string, number>;
+  user_ratios: Record<string, number>;
+  year: number;
+  month: number;
+}
+
+export interface SuggestedSplit {
+  year: number;
+  month: number;
+  total_incomes: Record<string, number>;
+  user_incomes: Record<string, number>;
+  suggested_ratios: Record<string, number>;
+  is_sufficient: boolean;
 }
 
 

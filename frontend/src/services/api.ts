@@ -33,6 +33,9 @@ import {
   CategoryMapping,
   CsvParseResponse,
   BulkImportRequest,
+  MonthlySplitRule,
+  EffectiveSplitRatio,
+  SuggestedSplit,
 } from '@/types';
 
 export const api = axios.create({
@@ -556,6 +559,41 @@ export const finanzasApi = {
 
   deleteInvestmentAsset: async (id: string): Promise<void> => {
     await api.delete(`/finanzas/investments/assets/${id}`);
+  },
+
+  // Dynamic Monthly Split Rules
+  getMonthlySplitRules: async (): Promise<MonthlySplitRule[]> => {
+    const { data } = await api.get<MonthlySplitRule[]>('/finanzas/split-rules');
+    return data;
+  },
+
+  getEffectiveSplitRule: async (year: number, month: number): Promise<EffectiveSplitRatio> => {
+    const { data } = await api.get<EffectiveSplitRatio>(`/finanzas/split-rules/${year}/${month}`);
+    return data;
+  },
+
+  createOrUpdateMonthlySplitRule: async (ruleData: {
+    year: number;
+    month: number;
+    user_ratios: Record<string, number>;
+    nota?: string;
+  }): Promise<MonthlySplitRule> => {
+    const { data } = await api.post<MonthlySplitRule>('/finanzas/split-rules', ruleData);
+    return data;
+  },
+
+  deleteMonthlySplitRule: async (id: string): Promise<void> => {
+    await api.delete(`/finanzas/split-rules/${id}`);
+  },
+
+  suggestMonthlySplit: async (year: number, month: number): Promise<SuggestedSplit> => {
+    const { data } = await api.get<SuggestedSplit>(`/finanzas/split-rules/suggest/${year}/${month}`);
+    return data;
+  },
+
+  updateHouseholdDefaultSplit: async (default_split_ratios: Record<string, number>): Promise<Household> => {
+    const { data } = await api.put<Household>('/finanzas/household-split-default', { default_split_ratios });
+    return data;
   },
 };
 

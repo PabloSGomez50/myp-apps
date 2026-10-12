@@ -626,3 +626,44 @@ class InvestmentAssetOut(InvestmentAssetBase):
     )
     def serialize_decimal(self, v: Decimal) -> float:
         return float(v) if v is not None else 0.0
+
+
+# ==============================================================================
+# Monthly Split Rules
+# ==============================================================================
+class MonthlySplitRuleCreate(BaseModel):
+    year: int = Field(..., ge=2020, le=2100)
+    month: int = Field(..., ge=1, le=12)
+    user_ratios: dict[str, float]
+
+
+class MonthlySplitRuleUpdate(BaseModel):
+    user_ratios: dict[str, float]
+
+
+class MonthlySplitRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    household_id: uuid.UUID
+    year: int
+    month: int
+    user_ratios: dict[str, float]
+    created_at: datetime
+    updated_at: datetime
+
+
+class EffectiveSplitRatioOut(BaseModel):
+    year: int
+    month: int
+    user_ratios: dict[str, float]
+    source: str  # "MONTHLY_RULE", "HOUSEHOLD_DEFAULT", "SYSTEM_DEFAULT"
+
+
+class SuggestedSplitOut(BaseModel):
+    year: int
+    month: int
+    total_incomes: dict[str, float]
+    suggested_ratios: dict[str, float]
+    is_sufficient: bool
+    message: str

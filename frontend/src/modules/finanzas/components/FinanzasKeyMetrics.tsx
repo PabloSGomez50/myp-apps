@@ -54,14 +54,14 @@ export const FinanzasKeyMetrics: React.FC<FinanzasKeyMetricsProps> = ({
       <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2 shadow-xl">
         <div className="flex items-center justify-between text-slate-400 text-xs">
           <span className="truncate">
-            Gastos Compartidos ({selectedMonthName}) {selectedMemberName ? `(50%: $${gastosCompartidosMonth.toLocaleString('es-AR')})` : ''}
+            Gastos Compartidos ({selectedMonthName})
           </span>
           <CreditCard className="w-4 h-4 text-indigo-400 flex-shrink-0" />
         </div>
         <div className="text-xl font-bold text-white font-mono">
           ${gastosCompartidosMonth.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
         </div>
-        <p className="text-[11px] text-slate-400">Cuota parte del 50% en gastos del hogar</p>
+        {/* <p className="text-[11px] text-slate-400">Cuota parte del 50% en gastos del hogar</p> */}
       </div>
 
       {/* 3. Reintegros / Devoluciones (Mes) - Vista Individual */}

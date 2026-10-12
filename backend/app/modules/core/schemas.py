@@ -45,6 +45,11 @@ class UserUpdate(BaseModel):
 class HouseholdBase(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=150)
     moneda_principal: CurrencyEnum = CurrencyEnum.ARS
+    default_split_ratios: dict[str, float] | None = None
+
+
+class HouseholdSplitUpdate(BaseModel):
+    default_split_ratios: dict[str, float]
 
 
 class AddMemberRequest(BaseModel):

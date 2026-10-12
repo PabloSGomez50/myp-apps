@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_and_household
 from app.modules.core.models import User
+from app.modules.core.schemas import HouseholdSplitUpdate
 from app.modules.finanzas.schemas import (
     AccountCreate,
     AccountOut,
@@ -27,12 +28,15 @@ from app.modules.finanzas.schemas import (
     CsvParseResponse,
     CurrencyQuoteCreate,
     CurrencyQuoteOut,
+    EffectiveSplitRatioOut,
     EmergencyFundCalculationOut,
     FoodPriceHistoryOut,
     GoalContributionCreate,
     InvestmentAssetCreate,
     InvestmentAssetOut,
     InvestmentAssetUpdate,
+    MonthlySplitRuleCreate,
+    MonthlySplitRuleOut,
     PostCheckoutSyncRequest,
     SavingsGoalCreate,
     SavingsGoalOut,
@@ -45,6 +49,7 @@ from app.modules.finanzas.schemas import (
     ShoppingListCreate,
     ShoppingListOut,
     ShoppingListUpdate,
+    SuggestedSplitOut,
     SupermarketCreate,
     SupermarketOut,
     SupermarketUpdate,
@@ -767,3 +772,106 @@ async def delete_investment_asset(
     _, household_id = current_auth
     await FinanzasService.delete_investment_asset(db, id, household_id)
     return None
+
+
+# ==============================================================================
+# Monthly Split Rules & Dynamic Splitting
+# ==============================================================================
+@finanzas_router.get(
+    "/split-rules",
+    response_model=list[MonthlySplitRuleOut],
+    status_code=status.HTTP_200_OK,
+)
+async def get_monthly_split_rules(
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    rules = await FinanzasService.get_monthly_split_rules(db, household_id)
+    return [MonthlySplitRuleOut.model_validate(r) for r in rules]
+
+
+@finanzas_router.get(
+    "/split-rules/{year}/{month}",
+    response_model=EffectiveSplitRatioOut,
+    status_code=status.HTTP_200_OK,
+)
+async def get_effective_split_rule(
+    year: int,
+    month: int,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    user_ratios, source = await FinanzasService.get_effective_split_ratio(
+        db, household_id, year, month
+    )
+    return EffectiveSplitRatioOut(
+        year=year,
+        month=month,
+        user_ratios=user_ratios,
+        source=source,
+    )
+
+
+@finanzas_router.post(
+    "/split-rules",
+    response_model=MonthlySplitRuleOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_or_update_monthly_split_rule(
+    data: MonthlySplitRuleCreate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    rule = await FinanzasService.create_or_update_monthly_split_rule(db, household_id, data)
+    return MonthlySplitRuleOut.model_validate(rule)
+
+
+@finanzas_router.delete(
+    "/split-rules/{id}",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_monthly_split_rule(
+    id: uuid.UUID,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    await FinanzasService.delete_monthly_split_rule(db, id, household_id)
+    return {"detail": "Regla eliminada exitosamente"}
+
+
+@finanzas_router.get(
+    "/split-rules/suggest/{year}/{month}",
+    response_model=SuggestedSplitOut,
+    status_code=status.HTTP_200_OK,
+)
+async def suggest_monthly_split(
+    year: int,
+    month: int,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    return await FinanzasService.suggest_monthly_split_from_income(db, household_id, year, month)
+
+
+@finanzas_router.put(
+    "/household-split-default",
+    status_code=status.HTTP_200_OK,
+)
+async def update_household_default_split(
+    data: HouseholdSplitUpdate,
+    current_auth: tuple[User, uuid.UUID | None] = Depends(get_current_user_and_household),
+    db: AsyncSession = Depends(get_db),
+):
+    _, household_id = current_auth
+    hh = await FinanzasService.update_household_default_split(
+        db, household_id, data.default_split_ratios
+    )
+    return {
+        "detail": "Regla por defecto del hogar actualizada exitosamente",
+        "default_split_ratios": hh.default_split_ratios,
+    }

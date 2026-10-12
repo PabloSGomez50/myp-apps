@@ -4,9 +4,19 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -482,3 +492,23 @@ class InvestmentAsset(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     moneda: Mapped[str] = mapped_column(String(10), default="ARS", nullable=False)
 
     broker: Mapped["Broker | None"] = relationship("Broker")
+
+
+class MonthlySplitRule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "monthly_split_rules"
+    __table_args__ = (
+        UniqueConstraint("household_id", "year", "month", name="uq_household_monthly_split"),
+        {"schema": "finanzas"},
+    )
+
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("core.households.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_ratios: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=False
+    )

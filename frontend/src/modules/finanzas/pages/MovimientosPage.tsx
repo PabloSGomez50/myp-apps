@@ -245,7 +245,7 @@ export const MovimientosPage: React.FC = () => {
             className="px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none"
           >
             <option value="">⚖️ Todos los Tipos</option>
-            <option value="SHARED">🤝 Compartidos 50/50</option>
+            <option value="SHARED">🤝 Compartidos</option>
             <option value="PERSONAL">👤 Personales</option>
             <option value="INCOME">💰 Ingresos / Sueldos</option>
             <option value="SETTLEMENT">💸 Devoluciones / Reintegros</option>
@@ -321,9 +321,19 @@ export const MovimientosPage: React.FC = () => {
                               Devolución
                             </span>
                           ) : tx.es_compartido ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                              50/50
-                            </span>
+                            (() => {
+                              const counterpartShare = Math.round((tx.split_ratio ?? 0.5) * 100);
+                              const payerShare = 100 - counterpartShare;
+                              const label = counterpartShare === 50 ? '50/50' : `${payerShare}/${counterpartShare}`;
+                              return (
+                                <span
+                                  className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 font-mono"
+                                  title={`Paga ${payerUser?.nombre || 'Pagador'} (${payerShare}%), debe contraparte (${counterpartShare}%)`}
+                                >
+                                  🤝 {label}
+                                </span>
+                              );
+                            })()
                           ) : (
                             <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">
                               Personal

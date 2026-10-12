@@ -18,8 +18,12 @@ import {
   ArrowUpDown,
   Lock,
   Palette,
+  Sliders,
+  Calendar,
 } from 'lucide-react';
 import { User, Category, CategoryMapping, ExpenseType } from '@/types';
+import { MonthlySplitModal } from '@/modules/finanzas/components/MonthlySplitModal';
+import { formatMonthYear } from '@/utils/date';
 
 const PRESET_AVATAR_COLORS = [
   '#10b981', // Emerald (Pablo default)
@@ -101,6 +105,13 @@ export const HogarPage: React.FC = () => {
   const [filterExpenseType, setFilterExpenseType] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'patron' | 'category' | 'tipo' | 'recent'>('patron');
 
+  // Monthly Split State & Default Split
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState<boolean>(false);
+  const [splitModalYear, setSplitModalYear] = useState<number>(new Date().getFullYear());
+  const [splitModalMonth, setSplitModalMonth] = useState<number>(new Date().getMonth() + 1);
+  const [isEditingDefaultSplit, setIsEditingDefaultSplit] = useState<boolean>(false);
+  const [defaultSplitRatios, setDefaultSplitRatios] = useState<Record<string, number>>({});
+
   // Queries
   const { data: householdData } = useQuery({
     queryKey: ['household'],
@@ -121,6 +132,86 @@ export const HogarPage: React.FC = () => {
     queryKey: ['categories'],
     queryFn: () => finanzasApi.getCategories(),
   });
+
+  const { data: splitRules = [] } = useQuery({
+    queryKey: ['split-rules'],
+    queryFn: () => finanzasApi.getMonthlySplitRules(),
+  });
+
+  // Split Rules Mutations & Handlers
+  const updateDefaultSplitMutation = useMutation({
+    mutationFn: (ratios: Record<string, number>) =>
+      finanzasApi.updateHouseholdDefaultSplit(ratios),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['household'] });
+      queryClient.invalidateQueries({ queryKey: ['effective-split'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['couple-net'] });
+      setIsEditingDefaultSplit(false);
+    },
+  });
+
+  const deleteSplitRuleMutation = useMutation({
+    mutationFn: (id: string) => finanzasApi.deleteMonthlySplitRule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-rules'] });
+      queryClient.invalidateQueries({ queryKey: ['effective-split'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['couple-net'] });
+    },
+  });
+
+  const handleStartEditingDefault = () => {
+    const initial: Record<string, number> = {};
+    members.forEach((m) => {
+      const raw = household?.default_split_ratios?.[m.user.id] ?? 0.5;
+      initial[m.user.id] = Math.round(raw * 100);
+    });
+    setDefaultSplitRatios(initial);
+    setIsEditingDefaultSplit(true);
+  };
+
+  const handleDefaultRatioChange = (userId: string, val: number) => {
+    const clamped = Math.max(0, Math.min(100, val));
+    const otherMember = members.find((m) => m.user.id !== userId);
+    if (otherMember && members.length === 2) {
+      setDefaultSplitRatios({
+        [userId]: clamped,
+        [otherMember.user.id]: 100 - clamped,
+      });
+    } else {
+      setDefaultSplitRatios((prev) => ({
+        ...prev,
+        [userId]: clamped,
+      }));
+    }
+  };
+
+  const handleSaveDefaultSplit = () => {
+    const total = Object.values(defaultSplitRatios).reduce((a, b) => a + b, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      alert('La suma de los porcentajes debe ser exactamente 100%');
+      return;
+    }
+    const decimalRatios: Record<string, number> = {};
+    for (const [uid, pct] of Object.entries(defaultSplitRatios)) {
+      decimalRatios[uid] = Number((pct / 100).toFixed(4));
+    }
+    updateDefaultSplitMutation.mutate(decimalRatios);
+  };
+
+  const handleOpenNewSplitRule = () => {
+    const now = new Date();
+    setSplitModalYear(now.getFullYear());
+    setSplitModalMonth(now.getMonth() + 1);
+    setIsSplitModalOpen(true);
+  };
+
+  const handleOpenEditSplitRule = (rule: { year: number; month: number }) => {
+    setSplitModalYear(rule.year);
+    setSplitModalMonth(rule.month);
+    setIsSplitModalOpen(true);
+  };
 
   // Mutations
   const addMemberMutation = useMutation({
@@ -387,6 +478,296 @@ export const HogarPage: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Section: Dynamic Shared Expense Splitting (Household Default & Monthly Rules) */}
+      <div className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800 space-y-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-indigo-400" /> División de Gastos Compartidos
+            </h4>
+            <p className="text-xs text-slate-400">
+              Configura la proporción por defecto de la pareja y gestiona reglas mensuales para repartir proporcional a sueldos
+            </p>
+          </div>
+
+          <button
+            onClick={handleOpenNewSplitRule}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 transition self-start sm:self-auto"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Nueva Regla Mensual</span>
+          </button>
+        </div>
+
+        {/* Sub-card 1: Household Default Split Ratio */}
+        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white">Regla Predeterminada del Hogar</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Base por defecto
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Esta división se aplicará automáticamente a cualquier mes que no posea una regla específica sobreescrita.
+              </p>
+            </div>
+
+            {!isEditingDefaultSplit && (
+              <button
+                onClick={handleStartEditingDefault}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition self-start sm:self-auto"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Modificar Predeterminado</span>
+              </button>
+            )}
+          </div>
+
+          {!isEditingDefaultSplit ? (
+            <div className="space-y-2">
+              {/* Visual Bar */}
+              <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden flex shadow-inner">
+                {members.map((m, idx) => {
+                  const raw = household?.default_split_ratios?.[m.user.id] ?? 0.5;
+                  const pct = Math.round(raw * 100);
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: m.user?.color_avatar || (idx === 0 ? '#10b981' : '#8b5cf6'),
+                      }}
+                      className="transition-all"
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Badges per member */}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                {members.map((m, idx) => {
+                  const raw = household?.default_split_ratios?.[m.user.id] ?? 0.5;
+                  const pct = Math.round(raw * 100);
+                  return (
+                    <div key={m.id} className="flex items-center gap-2 text-xs">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-white"
+                        style={{ backgroundColor: m.user?.color_avatar || (idx === 0 ? '#10b981' : '#8b5cf6') }}
+                      >
+                        {m.user?.nombre?.[0] || 'U'}
+                      </div>
+                      <span className="text-slate-300 font-semibold">{m.user?.nombre}:</span>
+                      <span className="font-mono font-bold text-white">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-2 border-t border-slate-900 animate-in fade-in">
+              {/* Member input cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                {members.map((m, idx) => {
+                  const pct = defaultSplitRatios[m.user.id] ?? 50;
+                  return (
+                    <div
+                      key={m.id}
+                      className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-white"
+                          style={{ backgroundColor: m.user?.color_avatar || (idx === 0 ? '#10b981' : '#8b5cf6') }}
+                        >
+                          {m.user?.nombre?.[0] || 'U'}
+                        </div>
+                        <span className="text-xs font-semibold text-slate-200 truncate">{m.user?.nombre}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={pct}
+                          onChange={(e) => handleDefaultRatioChange(m.user.id, parseInt(e.target.value) || 0)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-right font-bold text-white text-sm focus:outline-none focus:border-indigo-500 font-mono"
+                        />
+                        <span className="text-xs font-bold text-slate-400">%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Slider (controlling user 0 vs user 1) */}
+              {members.length === 2 && (
+                <div className="max-w-md px-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={defaultSplitRatios[members[0].user.id] ?? 50}
+                    onChange={(e) => handleDefaultRatioChange(members[0].user.id, parseInt(e.target.value))}
+                    className="w-full accent-indigo-500 h-2 bg-slate-900 rounded-lg cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 pt-1 font-mono">
+                    <span>100% {members[0].user?.nombre}</span>
+                    <span>50% / 50%</span>
+                    <span>100% {members[1].user?.nombre}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-500 mr-1">Rápidos:</span>
+                {[
+                  [50, 50],
+                  [60, 40],
+                  [65, 35],
+                  [70, 30],
+                  [40, 60],
+                  [35, 65],
+                  [30, 70],
+                ].map(([r1, r2]) => (
+                  <button
+                    key={`${r1}-${r2}`}
+                    type="button"
+                    onClick={() => {
+                      if (members.length >= 2) {
+                        setDefaultSplitRatios({
+                          [members[0].user.id]: r1,
+                          [members[1].user.id]: r2,
+                        });
+                      }
+                    }}
+                    className="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded text-[11px] font-mono border border-slate-800 transition-colors"
+                  >
+                    {r1}/{r2}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between max-w-md pt-2">
+                <span className="text-xs text-slate-400">
+                  Total: <strong className="text-white font-mono">{Object.values(defaultSplitRatios).reduce((a, b) => a + b, 0)}%</strong>
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingDefaultSplit(false)}
+                    className="px-3 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveDefaultSplit}
+                    disabled={updateDefaultSplitMutation.isPending}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition"
+                  >
+                    {updateDefaultSplitMutation.isPending ? 'Guardando...' : 'Guardar Predeterminado'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sub-card 2: Monthly Split Rules History */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Historial de Reglas Mensuales Específicas ({splitRules.length})
+              </h5>
+              <p className="text-[11px] text-slate-400">
+                Meses que tienen una regla propia para repartir gastos proporcionales o personalizados
+              </p>
+            </div>
+          </div>
+
+          {splitRules.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {splitRules.map((rule) => {
+                const monthName = formatMonthYear(rule.month, rule.year);
+                return (
+                  <div
+                    key={rule.id}
+                    className="p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-white font-mono flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                          {monthName}
+                        </span>
+                        {rule.nota && (
+                          <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1 italic">
+                            "{rule.nota}"
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenEditSplitRule(rule)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                          title="Editar Regla Mensual"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`¿Seguro que deseas eliminar la regla mensual de ${monthName}? Se recalcularán los movimientos con la regla predeterminada.`)) {
+                              deleteSplitRuleMutation.mutate(rule.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                          title="Eliminar Regla Mensual"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Member split badges */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-900">
+                      {members.map((m, idx) => {
+                        const raw = rule.user_ratios[m.user.id] ?? 0.5;
+                        const pct = Math.round(raw * 100);
+                        return (
+                          <span
+                            key={m.id}
+                            className="px-2 py-0.5 rounded-lg text-[11px] font-mono font-bold text-white flex items-center gap-1 shadow-sm"
+                            style={{ backgroundColor: m.user?.color_avatar || (idx === 0 ? '#10b981' : '#8b5cf6') }}
+                          >
+                            {m.user?.nombre?.[0]} {pct}%
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-6 rounded-2xl bg-slate-950/40 border border-slate-800/60 text-center space-y-1">
+              <p className="text-xs text-slate-400">
+                No hay reglas mensuales específicas registradas todavía.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Todos los meses aplican la proporción predeterminada del hogar.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -912,6 +1293,14 @@ export const HogarPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Monthly Split Modal */}
+      <MonthlySplitModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+        year={splitModalYear}
+        month={splitModalMonth}
+      />
     </div>
   );
 };
