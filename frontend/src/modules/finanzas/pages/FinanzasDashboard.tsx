@@ -101,6 +101,21 @@ export const FinanzasDashboard: React.FC = () => {
     return Math.round((effectiveSplit?.user_ratios?.[viewScope] ?? 0.5) * 100);
   }, [viewScope, effectiveSplit]);
 
+  const splitScopeBadgeText = useMemo(() => {
+    if (effectiveSplit?.source !== 'MONTHLY_RULE') return null;
+    const types = effectiveSplit.applicable_expense_types;
+    if (!types || types.length === 0) return 'Solo Fijos';
+    if (types.length === 1 && types.includes('FIXED_HOUSEHOLD')) return 'Solo Fijos';
+    if (
+      types.length === 2 &&
+      types.includes('FIXED_HOUSEHOLD') &&
+      types.includes('VARIABLE_HOUSEHOLD')
+    )
+      return 'Fijos + Var.';
+    if (types.length === 3) return 'Todos';
+    return `${types.length} tipos`;
+  }, [effectiveSplit]);
+
   const { data: coupleBalance, isLoading: isLoadingBalance } = useQuery({
     queryKey: ['couple-net'],
     queryFn: () => finanzasApi.getCoupleBalance(),
@@ -317,6 +332,11 @@ export const FinanzasDashboard: React.FC = () => {
                 );
               })}
             </div>
+            {splitScopeBadgeText && (
+              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                {splitScopeBadgeText}
+              </span>
+            )}
           </button>
 
           {/* Global Month Selector Bar */}

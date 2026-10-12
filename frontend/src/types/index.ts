@@ -473,17 +473,19 @@ export interface MonthlySplitRule {
   year: number;
   month: number;
   user_ratios: Record<string, number>;
+  applicable_expense_types: ExpenseType[];
   nota?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface EffectiveSplitRatio {
-  source: 'MONTHLY_RULE' | 'HOUSEHOLD_DEFAULT' | 'EQUAL_SPLIT';
-  // ratios: Record<string, number>;
+  source: 'MONTHLY_RULE' | 'HOUSEHOLD_DEFAULT' | 'EQUAL_SPLIT' | 'SYSTEM_DEFAULT';
   user_ratios: Record<string, number>;
   year: number;
   month: number;
+  applicable_expense_types?: ExpenseType[];
+  fallback_ratios?: Record<string, number>;
 }
 
 export interface SuggestedSplit {

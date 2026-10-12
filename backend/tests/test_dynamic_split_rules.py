@@ -36,29 +36,42 @@ async def test_dynamic_split_rules_and_retroactive_recalculation(client: AsyncCl
     assert eff_data["user_ratios"][u1_id] == 0.5
     assert eff_data["user_ratios"][u2_id] == 0.5
 
-    # 3. Create a category for expenses
-    cat_res = await client.post(
+    # 3. Create categories: Fixed Household & Leisure Couple
+    cat_fixed_res = await client.post(
         "/api/v1/finanzas/categories",
         headers=auth_headers,
         json={
-            "nombre": "Supermercado Común",
-            "tipo_gasto": "VARIABLE_HOUSEHOLD",
+            "nombre": "Alquiler y Expensas",
+            "tipo_gasto": "FIXED_HOUSEHOLD",
             "color": "#10b981",
         },
     )
-    assert cat_res.status_code == 201
-    cat_id = cat_res.json()["id"]
+    assert cat_fixed_res.status_code == 201
+    cat_fixed_id = cat_fixed_res.json()["id"]
 
-    # 4. Create a shared expense in 2026/10 paid by User 1 (Pablo)
+    cat_leisure_res = await client.post(
+        "/api/v1/finanzas/categories",
+        headers=auth_headers,
+        json={
+            "nombre": "Salidas y Cenas",
+            "tipo_gasto": "LEISURE_COUPLE",
+            "color": "#ec4899",
+        },
+    )
+    assert cat_leisure_res.status_code == 201
+    cat_leisure_id = cat_leisure_res.json()["id"]
+
+    # 4. Create shared expenses in 2026/10 paid by User 1 (Pablo)
+    # 4a. Fixed expense $1000
     tx1_res = await client.post(
         "/api/v1/finanzas/transactions",
         headers=auth_headers,
         json={
             "user_id": u1_id,
-            "category_id": cat_id,
+            "category_id": cat_fixed_id,
             "tipo": "EXPENSE",
             "monto": 1000.0,
-            "descripcion": "Gasto Inicial Octubre",
+            "descripcion": "Expensas Octubre",
             "es_compartido": True,
             "fecha": "2026-10-05T12:00:00Z",
         },
@@ -67,7 +80,25 @@ async def test_dynamic_split_rules_and_retroactive_recalculation(client: AsyncCl
     tx1_id = tx1_res.json()["id"]
     assert float(tx1_res.json()["split_ratio"]) == 0.50
 
-    # 5. Create a monthly split rule for 2026/10: User 1 (Pablo): 70%, User 2 (Martu): 30%
+    # 4b. Leisure expense $1000
+    tx_leisure_res = await client.post(
+        "/api/v1/finanzas/transactions",
+        headers=auth_headers,
+        json={
+            "user_id": u1_id,
+            "category_id": cat_leisure_id,
+            "tipo": "EXPENSE",
+            "monto": 1000.0,
+            "descripcion": "Cena Rapanui",
+            "es_compartido": True,
+            "fecha": "2026-10-06T12:00:00Z",
+        },
+    )
+    assert tx_leisure_res.status_code == 201
+    tx_leisure_id = tx_leisure_res.json()["id"]
+    assert float(tx_leisure_res.json()["split_ratio"]) == 0.50
+
+    # 5. Create a monthly split rule for 2026/10 ONLY for FIXED_HOUSEHOLD: User 1: 70%, User 2: 30%
     rule_res = await client.post(
         "/api/v1/finanzas/split-rules",
         headers=auth_headers,
@@ -78,45 +109,51 @@ async def test_dynamic_split_rules_and_retroactive_recalculation(client: AsyncCl
                 u1_id: 0.70,
                 u2_id: 0.30,
             },
+            "applicable_expense_types": ["FIXED_HOUSEHOLD"],
         },
     )
     assert rule_res.status_code == 201
     rule_id = rule_res.json()["id"]
     assert rule_res.json()["user_ratios"][u1_id] == 0.70
+    assert rule_res.json()["applicable_expense_types"] == ["FIXED_HOUSEHOLD"]
 
-    # 6. Verify tx1 split_ratio was retroactively updated to 0.30 (what Martu owes Pablo)
+    # 6. Verify tx1 (Fixed) split_ratio was retroactively updated to 0.30 (what Martu owes Pablo)
+    # AND verify tx_leisure (Leisure) remained at 0.50 (not included in applicable_expense_types)!
     txs_res = await client.get("/api/v1/finanzas/transactions", headers=auth_headers)
     assert txs_res.status_code == 200
     tx1_reloaded = next(t for t in txs_res.json() if t["id"] == tx1_id)
     assert float(tx1_reloaded["split_ratio"]) == 0.30
 
-    # 7. Create another shared expense in 2026/10 paid by User 2 (Martu)
+    tx_leisure_reloaded = next(t for t in txs_res.json() if t["id"] == tx_leisure_id)
+    assert float(tx_leisure_reloaded["split_ratio"]) == 0.50
+
+    # 7. Create another shared expense in 2026/10 paid by User 2 (Martu) in FIXED_HOUSEHOLD
     tx2_res = await client.post(
         "/api/v1/finanzas/transactions",
         headers=auth_headers,
         json={
             "user_id": u2_id,
-            "category_id": cat_id,
+            "category_id": cat_fixed_id,
             "tipo": "EXPENSE",
             "monto": 1000.0,
-            "descripcion": "Gasto Farmacia Octubre",
+            "descripcion": "Internet Octubre",
             "es_compartido": True,
             "fecha": "2026-10-10T12:00:00Z",
         },
     )
     assert tx2_res.status_code == 201
-    # For Martu's transaction, Pablo owes 70% to Martu -> split_ratio must be 0.70
+    # For Martu's fixed transaction, Pablo owes 70% to Martu -> split_ratio must be 0.70
     assert float(tx2_res.json()["split_ratio"]) == 0.70
 
-    # 8. Verify Couple Net Balance calculation
-    # Total shared = $2000.
-    # Pablo share (70%) = $1400. Paid $1000. Owes $400.
-    # Martu share (30%) = $600. Paid $1000. Credit $400.
-    # From Pablo's perspective (u1): net_balance = -400.00
+    # 8. Verify Couple Net Balance calculation:
+    # - tx1 (Pablo paid $1000 fixed, Martu owes 30%): +$300 for Pablo
+    # - tx_leisure (Pablo paid $1000 leisure, Martu owes 50%): +$500 for Pablo
+    # - tx2 (Martu paid $1000 fixed, Pablo owes 70%): -$700 for Pablo
+    # Net balance for Pablo: +300 + 500 - 700 = +$100.00 (Martu te adeuda $100.00)
     bal_res = await client.get("/api/v1/finanzas/balance/couple-net", headers=auth_headers)
     assert bal_res.status_code == 200
     bal_data = bal_res.json()
-    assert float(bal_data["net_balance"]) == -400.00
+    assert float(bal_data["net_balance"]) == 100.00
 
     # 9. Test Suggest Split from Incomes
     # Add income for User 1 ($1,500,000) and User 2 ($500,000) in 2026/11

@@ -635,10 +635,14 @@ class MonthlySplitRuleCreate(BaseModel):
     year: int = Field(..., ge=2020, le=2100)
     month: int = Field(..., ge=1, le=12)
     user_ratios: dict[str, float]
+    applicable_expense_types: list[ExpenseTypeEnum] = Field(
+        default_factory=lambda: [ExpenseTypeEnum.FIXED_HOUSEHOLD]
+    )
 
 
 class MonthlySplitRuleUpdate(BaseModel):
     user_ratios: dict[str, float]
+    applicable_expense_types: list[ExpenseTypeEnum] | None = None
 
 
 class MonthlySplitRuleOut(BaseModel):
@@ -649,6 +653,7 @@ class MonthlySplitRuleOut(BaseModel):
     year: int
     month: int
     user_ratios: dict[str, float]
+    applicable_expense_types: list[str] = [ExpenseTypeEnum.FIXED_HOUSEHOLD.value]
     created_at: datetime
     updated_at: datetime
 
@@ -658,6 +663,8 @@ class EffectiveSplitRatioOut(BaseModel):
     month: int
     user_ratios: dict[str, float]
     source: str  # "MONTHLY_RULE", "HOUSEHOLD_DEFAULT", "SYSTEM_DEFAULT"
+    applicable_expense_types: list[str] = [ExpenseTypeEnum.FIXED_HOUSEHOLD.value]
+    fallback_ratios: dict[str, float] = {}
 
 
 class SuggestedSplitOut(BaseModel):

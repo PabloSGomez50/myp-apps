@@ -282,8 +282,14 @@ class FinanzasService:
         split_ratio = data.split_ratio
         if data.es_compartido and (split_ratio is None or split_ratio == Decimal("0.50")):
             tx_date = data.fecha or datetime.now(UTC)
-            effective_ratios, _ = await FinanzasService.get_effective_split_ratio(
-                db, household_id, tx_date.year, tx_date.month
+            expense_type = None
+            if data.category_id:
+                cat = await db.get(Category, data.category_id)
+                if cat:
+                    expense_type = cat.tipo_gasto
+
+            effective_ratios, _, _, _ = await FinanzasService.get_effective_split_ratio(
+                db, household_id, tx_date.year, tx_date.month, expense_type=expense_type
             )
             split_ratio = FinanzasService.calculate_counterpart_split_ratio(
                 effective_ratios, payer_user_id
@@ -314,8 +320,14 @@ class FinanzasService:
     ) -> Transaction:
         payer_user_id = data.user_id if data.user_id else user_id
         tx_date = data.fecha or datetime.now(UTC)
-        effective_ratios, _ = await FinanzasService.get_effective_split_ratio(
-            db, household_id, tx_date.year, tx_date.month
+        expense_type = None
+        if data.category_id:
+            cat = await db.get(Category, data.category_id)
+            if cat:
+                expense_type = cat.tipo_gasto
+
+        effective_ratios, _, _, _ = await FinanzasService.get_effective_split_ratio(
+            db, household_id, tx_date.year, tx_date.month, expense_type=expense_type
         )
         counterpart_ratio = FinanzasService.calculate_counterpart_split_ratio(
             effective_ratios, payer_user_id
@@ -586,9 +598,32 @@ class FinanzasService:
     # ==========================================================================
     @staticmethod
     async def get_effective_split_ratio(
-        db: AsyncSession, household_id: uuid.UUID, year: int, month: int
-    ) -> tuple[dict[str, float], str]:
-        # 1. Look for explicit monthly rule
+        db: AsyncSession,
+        household_id: uuid.UUID,
+        year: int,
+        month: int,
+        expense_type: ExpenseTypeEnum | str | None = None,
+    ) -> tuple[dict[str, float], str, list[str], dict[str, float]]:
+        # 1. Determine fallback ratios (household default or system default)
+        hh_res = await db.execute(select(Household).where(Household.id == household_id))
+        household = hh_res.scalar_one_or_none()
+        fallback_ratios: dict[str, float] = {}
+        fallback_source = "SYSTEM_DEFAULT"
+
+        if household and household.default_split_ratios:
+            fallback_ratios = household.default_split_ratios
+            fallback_source = "HOUSEHOLD_DEFAULT"
+        else:
+            members_res = await db.execute(
+                select(HouseholdMember).where(HouseholdMember.household_id == household_id)
+            )
+            members = list(members_res.scalars().all())
+            if members:
+                count = len(members)
+                equal_share = round(1.0 / count, 2)
+                fallback_ratios = {str(m.user_id): equal_share for m in members}
+
+        # 2. Look for explicit monthly rule
         rule_res = await db.execute(
             select(MonthlySplitRule).where(
                 MonthlySplitRule.household_id == household_id,
@@ -598,26 +633,26 @@ class FinanzasService:
         )
         rule = rule_res.scalar_one_or_none()
         if rule and rule.user_ratios:
-            return rule.user_ratios, "MONTHLY_RULE"
+            applicable_types = rule.applicable_expense_types or [
+                ExpenseTypeEnum.FIXED_HOUSEHOLD.value
+            ]
+            if expense_type:
+                exp_type_val = (
+                    expense_type.value if hasattr(expense_type, "value") else str(expense_type)
+                )
+                if exp_type_val in applicable_types:
+                    return rule.user_ratios, "MONTHLY_RULE", applicable_types, fallback_ratios
+                else:
+                    return fallback_ratios, fallback_source, applicable_types, fallback_ratios
 
-        # 2. Look for household default
-        hh_res = await db.execute(select(Household).where(Household.id == household_id))
-        household = hh_res.scalar_one_or_none()
-        if household and household.default_split_ratios:
-            return household.default_split_ratios, "HOUSEHOLD_DEFAULT"
+            return rule.user_ratios, "MONTHLY_RULE", applicable_types, fallback_ratios
 
-        # 3. Fallback to equal split between household members
-        members_res = await db.execute(
-            select(HouseholdMember).where(HouseholdMember.household_id == household_id)
+        return (
+            fallback_ratios,
+            fallback_source,
+            [ExpenseTypeEnum.FIXED_HOUSEHOLD.value],
+            fallback_ratios,
         )
-        members = list(members_res.scalars().all())
-        if members:
-            count = len(members)
-            equal_share = round(1.0 / count, 2)
-            default_map = {str(m.user_id): equal_share for m in members}
-            return default_map, "SYSTEM_DEFAULT"
-
-        return {}, "SYSTEM_DEFAULT"
 
     @staticmethod
     def calculate_counterpart_split_ratio(
@@ -655,6 +690,11 @@ class FinanzasService:
     async def create_or_update_monthly_split_rule(
         db: AsyncSession, household_id: uuid.UUID, data: MonthlySplitRuleCreate
     ) -> MonthlySplitRule:
+        applicable_types = [
+            t.value if hasattr(t, "value") else str(t)
+            for t in (data.applicable_expense_types or [ExpenseTypeEnum.FIXED_HOUSEHOLD])
+        ]
+
         result = await db.execute(
             select(MonthlySplitRule).where(
                 MonthlySplitRule.household_id == household_id,
@@ -665,17 +705,25 @@ class FinanzasService:
         rule = result.scalar_one_or_none()
         if rule:
             rule.user_ratios = data.user_ratios
+            rule.applicable_expense_types = applicable_types
             from sqlalchemy.orm.attributes import flag_modified
 
             flag_modified(rule, "user_ratios")
+            flag_modified(rule, "applicable_expense_types")
         else:
             rule = MonthlySplitRule(
                 household_id=household_id,
                 year=data.year,
                 month=data.month,
                 user_ratios=data.user_ratios,
+                applicable_expense_types=applicable_types,
             )
             db.add(rule)
+
+        # Get fallback ratios for transactions whose expense type is not in applicable_types
+        fallback_ratios, _, _, _ = await FinanzasService.get_effective_split_ratio(
+            db, household_id, data.year, data.month, expense_type="__FORCE_FALLBACK__"
+        )
 
         # Retroactive update for all shared expenses in that month/year
         txs_res = await db.execute(
@@ -689,8 +737,14 @@ class FinanzasService:
         )
         txs = list(txs_res.scalars().all())
         for tx in txs:
+            tx_cat_type = tx.category.tipo_gasto.value if tx.category else None
+            if tx_cat_type and tx_cat_type in applicable_types:
+                target_ratios = data.user_ratios
+            else:
+                target_ratios = fallback_ratios
+
             tx.split_ratio = FinanzasService.calculate_counterpart_split_ratio(
-                data.user_ratios, tx.user_id
+                target_ratios, tx.user_id
             )
 
         await db.commit()
@@ -714,7 +768,7 @@ class FinanzasService:
         await db.flush()
 
         # Recalculate transactions of that month back to effective fallback
-        fallback_ratios, _ = await FinanzasService.get_effective_split_ratio(
+        fallback_ratios, _, _, _ = await FinanzasService.get_effective_split_ratio(
             db, household_id, target_year, target_month
         )
         txs_res = await db.execute(
@@ -1975,19 +2029,27 @@ class FinanzasService:
                 db.add(new_m)
 
         count = 0
-        cache_ratios: dict[tuple[int, int], dict[str, float]] = {}
+        cache_ratios: dict[tuple[int, int, str | None], Decimal] = {}
+        # Preload categories map for fast lookup
+        cat_ids = {r.category_id for r in data.rows if r.category_id}
+        cat_map: dict[uuid.UUID, str] = {}
+        if cat_ids:
+            cat_query = await db.execute(select(Category).where(Category.id.in_(cat_ids)))
+            cat_map = {c.id: c.tipo_gasto.value for c in cat_query.scalars().all()}
+
         for r in data.rows:
             split_ratio = Decimal("0.50")
             if r.es_compartido:
-                ym_key = (r.fecha.year, r.fecha.month)
-                if ym_key not in cache_ratios:
-                    eff_ratios, _ = await FinanzasService.get_effective_split_ratio(
-                        db, household_id, ym_key[0], ym_key[1]
+                cat_type = cat_map.get(r.category_id)
+                cache_key = (r.fecha.year, r.fecha.month, cat_type)
+                if cache_key not in cache_ratios:
+                    eff_ratios, _, _, _ = await FinanzasService.get_effective_split_ratio(
+                        db, household_id, r.fecha.year, r.fecha.month, expense_type=cat_type
                     )
-                    cache_ratios[ym_key] = eff_ratios
-                split_ratio = FinanzasService.calculate_counterpart_split_ratio(
-                    cache_ratios[ym_key], r.user_id
-                )
+                    cache_ratios[cache_key] = FinanzasService.calculate_counterpart_split_ratio(
+                        eff_ratios, r.user_id
+                    )
+                split_ratio = cache_ratios[cache_key]
 
             tx = Transaction(
                 household_id=household_id,

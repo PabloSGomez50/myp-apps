@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { ExpenseType } from '@/types';
 import { X, Sliders, Sparkles, RotateCcw, Check, AlertCircle, Info } from 'lucide-react';
 
 interface Props {
@@ -21,6 +22,7 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
   const { householdMembers } = useAuth();
 
   const [ratios, setRatios] = useState<Record<string, number>>({});
+  const [applicableTypes, setApplicableTypes] = useState<ExpenseType[]>(['FIXED_HOUSEHOLD']);
   const [nota, setNota] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
 
@@ -76,10 +78,27 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
       });
       setRatios(initial);
       setNota(currentRule?.nota || '');
+      setApplicableTypes(currentRule?.applicable_expense_types || ['FIXED_HOUSEHOLD']);
       setErrorMsg('');
       initializedKeyRef.current = currentKey;
     }
   }, [isOpen, year, month, effectiveSplit, currentRule, members]);
+
+  const toggleExpenseType = (type: ExpenseType) => {
+    setApplicableTypes((prev) => {
+      if (prev.includes(type)) {
+        if (prev.length === 1) {
+          setErrorMsg('Debes seleccionar al menos un tipo de gasto para la regla.');
+          return prev;
+        }
+        setErrorMsg('');
+        return prev.filter((t) => t !== type);
+      } else {
+        setErrorMsg('');
+        return [...prev, type];
+      }
+    });
+  };
 
   const handleRatioChange = (userId: string, val: number) => {
     const clamped = Math.max(0, Math.min(100, val));
@@ -150,10 +169,15 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
         decimalRatios[uid] = Number((pct / 100).toFixed(4));
       }
 
+      if (applicableTypes.length === 0) {
+        throw new Error('Selecciona al menos un tipo de gasto para la regla.');
+      }
+
       return finanzasApi.createOrUpdateMonthlySplitRule({
         year,
         month,
         user_ratios: decimalRatios,
+        applicable_expense_types: applicableTypes,
         nota: nota.trim() || undefined,
       });
     },
@@ -406,6 +430,77 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
             </div> */}
           </div>
 
+          {/* Selective Expense Types */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Tipos de gastos incluidos en esta regla
+              </label>
+              <span className="text-[11px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
+                {applicableTypes.length} de 3 activos
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Solo los tipos seleccionados usarán el porcentaje de arriba. Los demás se dividirán según la regla predeterminada del hogar (50% / 50%).
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              {[
+                {
+                  id: 'FIXED_HOUSEHOLD' as ExpenseType,
+                  title: 'Fijos del Hogar',
+                  desc: 'Alquiler, expensas, luz, gas, internet, seguros',
+                  icon: '🏠',
+                },
+                {
+                  id: 'VARIABLE_HOUSEHOLD' as ExpenseType,
+                  title: 'Variables del Hogar',
+                  desc: 'Supermercado, farmacia, artículos de limpieza, compras compartidas',
+                  icon: '🛒',
+                },
+                {
+                  id: 'LEISURE_COUPLE' as ExpenseType,
+                  title: 'Ocio en Pareja',
+                  desc: 'Salidas a comer, delivery, cine, vacaciones, citas',
+                  icon: '🍕',
+                },
+              ].map((item) => {
+                const isChecked = applicableTypes.includes(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleExpenseType(item.id)}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                      isChecked
+                        ? 'bg-indigo-950/30 border-indigo-500/40 text-white shadow-sm'
+                        : 'bg-slate-800/30 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
+                    }`}
+                  >
+                    <div className="text-lg leading-none mt-0.5">{item.icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-semibold ${isChecked ? 'text-indigo-200' : 'text-slate-300'}`}>
+                          {item.title}
+                        </span>
+                        <span className={`text-[10px] font-mono font-medium px-2 py-0.5 rounded-full ${
+                          isChecked
+                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                            : 'bg-slate-800/80 text-slate-500 border border-slate-700/50'
+                        }`}>
+                          {isChecked ? '✨ Aplica regla' : '🏠 Predeterminado (50/50)'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Optional Note */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">
@@ -424,7 +519,7 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
           <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300/90 flex items-start gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
             <span>
-              <strong>Recálculo automático:</strong> Al guardar esta regla, todos los movimientos compartidos ya cargados en {MONTH_NAMES[month - 1]} {year} se recalcularán inmediatamente con esta nueva proporción.
+              <strong>Recálculo automático:</strong> Al guardar esta regla, los movimientos compartidos de los tipos seleccionados se recalcularán inmediatamente con esta nueva proporción, mientras que los tipos no seleccionados usarán la regla predeterminada del hogar.
             </span>
           </div>
         </div>

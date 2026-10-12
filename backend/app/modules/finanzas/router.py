@@ -803,14 +803,19 @@ async def get_effective_split_rule(
     db: AsyncSession = Depends(get_db),
 ):
     _, household_id = current_auth
-    user_ratios, source = await FinanzasService.get_effective_split_ratio(
-        db, household_id, year, month
-    )
+    (
+        user_ratios,
+        source,
+        applicable_types,
+        fallback_ratios,
+    ) = await FinanzasService.get_effective_split_ratio(db, household_id, year, month)
     return EffectiveSplitRatioOut(
         year=year,
         month=month,
         user_ratios=user_ratios,
         source=source,
+        applicable_expense_types=applicable_types,
+        fallback_ratios=fallback_ratios,
     )
 
 

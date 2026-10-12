@@ -36,6 +36,7 @@ import {
   MonthlySplitRule,
   EffectiveSplitRatio,
   SuggestedSplit,
+  ExpenseType,
 } from '@/types';
 
 export const api = axios.create({
@@ -576,6 +577,7 @@ export const finanzasApi = {
     year: number;
     month: number;
     user_ratios: Record<string, number>;
+    applicable_expense_types?: ExpenseType[];
     nota?: string;
   }): Promise<MonthlySplitRule> => {
     const { data } = await api.post<MonthlySplitRule>('/finanzas/split-rules', ruleData);

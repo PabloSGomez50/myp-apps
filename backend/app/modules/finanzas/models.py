@@ -512,3 +512,8 @@ class MonthlySplitRule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     user_ratios: Mapped[dict] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=False
     )
+    applicable_expense_types: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=lambda: ["FIXED_HOUSEHOLD"],
+        nullable=False,
+    )
