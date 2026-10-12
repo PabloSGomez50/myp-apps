@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { finanzasApi, coreApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -23,6 +23,8 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
   const [ratios, setRatios] = useState<Record<string, number>>({});
   const [nota, setNota] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  const initializedKeyRef = useRef<string | null>(null);
 
   const { data: householdData } = useQuery({
     queryKey: ['household'],
@@ -50,28 +52,34 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
 
   const currentRule = existingRules?.find((r) => r.year === year && r.month === month);
 
-  const members =
-    householdData?.members && householdData.members.length > 0
+  const members = useMemo(() => {
+    return householdData?.members && householdData.members.length > 0
       ? householdData.members.map((m) => m.user)
       : householdMembers;
+  }, [householdData?.members, householdMembers]);
 
-  // Initialize ratios when effectiveSplit or members change
+  // Initialize ratios ONCE per modal open / month session
   useEffect(() => {
-    if (effectiveSplit?.user_ratios && members.length > 0) {
+    if (!isOpen) {
+      initializedKeyRef.current = null;
+      return;
+    }
+
+    const currentKey = `${year}-${month}`;
+    const sourceRatios = currentRule?.user_ratios || effectiveSplit?.user_ratios;
+
+    if (initializedKeyRef.current !== currentKey && sourceRatios && members.length > 0) {
       const initial: Record<string, number> = {};
       members.forEach((m) => {
-        const raw = effectiveSplit.user_ratios[m.id] ?? 0.5;
+        const raw = sourceRatios[m.id] ?? 0.5;
         initial[m.id] = Math.round(raw * 100);
       });
       setRatios(initial);
-      if (currentRule?.nota) {
-        setNota(currentRule.nota);
-      } else {
-        setNota('');
-      }
+      setNota(currentRule?.nota || '');
       setErrorMsg('');
+      initializedKeyRef.current = currentKey;
     }
-  }, [effectiveSplit, currentRule, members]);
+  }, [isOpen, year, month, effectiveSplit, currentRule, members]);
 
   const handleRatioChange = (userId: string, val: number) => {
     const clamped = Math.max(0, Math.min(100, val));
@@ -96,6 +104,21 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
         [members[0].id]: ratio1,
         [members[1].id]: ratio2,
       });
+    }
+  };
+
+  const applyHouseholdDefault = () => {
+    const defaultRatios = householdData?.default_split_ratios;
+    if (defaultRatios && members.length > 0) {
+      const next: Record<string, number> = {};
+      members.forEach((m) => {
+        const raw = defaultRatios[m.id] ?? 0.5;
+        next[m.id] = Math.round(raw * 100);
+      });
+      setRatios(next);
+      setNota('Predeterminado del hogar');
+    } else {
+      applyPreset(50, 50);
     }
   };
 
@@ -342,6 +365,16 @@ export const MonthlySplitModal: React.FC<Props> = ({ isOpen, onClose, year, mont
                 {/* Presets */}
                 <div className="flex items-center gap-1.5 pt-1 flex-wrap">
                   <span className="text-[11px] text-slate-500 mr-1">Rápidos:</span>
+                  {householdData?.default_split_ratios && (
+                    <button
+                      type="button"
+                      onClick={applyHouseholdDefault}
+                      className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-md text-[11px] font-medium border border-amber-500/30 transition-colors"
+                      title="Usar división configurada por defecto en el hogar"
+                    >
+                      🏠 Hogar
+                    </button>
+                  )}
                   {[
                     [50, 50],
                     [60, 40],

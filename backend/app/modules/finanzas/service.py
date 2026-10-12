@@ -665,6 +665,9 @@ class FinanzasService:
         rule = result.scalar_one_or_none()
         if rule:
             rule.user_ratios = data.user_ratios
+            from sqlalchemy.orm.attributes import flag_modified
+
+            flag_modified(rule, "user_ratios")
         else:
             rule = MonthlySplitRule(
                 household_id=household_id,

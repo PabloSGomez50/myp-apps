@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -30,6 +31,16 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
 @auth_router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     return await CoreService.login_user(db, data)
+
+
+@auth_router.post("/token", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    """OAuth2 compatible token login for Swagger UI documentation (/api/docs)."""
+    login_data = UserLogin(email=form_data.username, password=form_data.password)
+    return await CoreService.login_user(db, login_data)
 
 
 @auth_router.post("/switch-profile", response_model=TokenResponse, status_code=status.HTTP_200_OK)
